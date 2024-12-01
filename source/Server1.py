@@ -23,8 +23,10 @@ try:
     while (msg != "s"):
         msg = conn.recv(1024).decode(FORMAT)
         print("Client says: ", msg)
+        if (msg == "s"):
+           break 
         msg = input("talk: ")
-        conn.sendall(msg.encode(FORMAT))  
+        conn.sendall(msg.encode(FORMAT))
 except:
-    print("error") 
+    print("error")
 conn.close()
