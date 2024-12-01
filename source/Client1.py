@@ -6,14 +6,17 @@ FORMAT = "utf8"
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-print("Client SIDE")
-client.connect((HOST, SERVER_PORT))
-print("Client address: ", client.getsockname())
+try:
+    print("Client SIDE")
+    client.connect((HOST, SERVER_PORT))
+    print("Client address: ", client.getsockname())
 
-username = input("Nhap ten: ")
-client.sendall(username.encode(FORMAT))
-
-password = input("Nhap mk: ")
-client.sendall(password.encode(FORMAT))
-
-input()
+    msg = None
+    while (msg != "s"):
+        msg = input("talk: ")
+        client.sendall(msg.encode(FORMAT))    
+        msg = client.recv(1024).decode(FORMAT)
+        print("Server says: ", msg)
+except:
+    print("error") 
+client.close()

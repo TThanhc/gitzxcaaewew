@@ -13,15 +13,18 @@ print("Server SIDE")
 print("server: ", HOST, SERVER_PORT)
 print("Waiting for Client")
 
-conn, addr = s.accept()
+try:
+    conn, addr = s.accept()
 
-print("Client address: ", addr)
-print("conn: ", conn.getsockname())
+    print("Client address: ", addr)
+    print("conn: ", conn.getsockname())
 
-username = conn.recv(1024).decode(FORMAT)
-print("Username: ", username)
-
-password = conn.recv(1024).decode(FORMAT)
-print("Pass: ", password)
-
-input()
+    msg = None
+    while (msg != "s"):
+        msg = conn.recv(1024).decode(FORMAT)
+        print("Client says: ", msg)
+        msg = input("talk: ")
+        conn.sendall(msg.encode(FORMAT))  
+except:
+    print("error") 
+conn.close()
