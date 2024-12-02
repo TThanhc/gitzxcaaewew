@@ -16,9 +16,12 @@ try:
         msg = input("talk: ")
         client.sendall(msg.encode(FORMAT))
         if msg == "s":
-           break 
+           break
+        client.recv(1024).decode(FORMAT) 
         msg = client.recv(1024).decode(FORMAT)
         print("Server says: ", msg)
+        
+        client.sendall(msg.encode(FORMAT))
 except:
     print("error")
 client.close()
