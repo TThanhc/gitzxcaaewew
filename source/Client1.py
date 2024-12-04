@@ -7,10 +7,8 @@ FORMAT = "utf8"
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 try:
-    print("Client SIDE")
     client.connect((HOST, SERVER_PORT))
     print("Client address: ", client.getsockname())
-
     msg = None
     while (msg != "s"):
         msg = input("talk: ")

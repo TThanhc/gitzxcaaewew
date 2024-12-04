@@ -9,40 +9,25 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 s.bind((HOST, SERVER_PORT))
 s.listen()
-
+print("Server (", SERVER_PORT, ")is Waiting for Client")
 
 def handleClient(conn: socket, addr):
-    print("Client ", nClients + 1, " address: ", addr, " | ", )
-    print("conn: ", conn.getsockname())
-
+    print("Client: ", conn.getsockname(), "is connecting to Sever (", SERVER_PORT, ")")
     msg = None
     while (msg != "s"):
         msg = conn.recv(1024).decode(FORMAT)
-        print("Client ", nClients + 1, " says: ", msg)
+        print("Client says: ", msg)
         if (msg == "s"):
             break
         conn.sendall(msg.encode(FORMAT))
-                    
         msg = input("talk: ")
         conn.sendall(msg.encode(FORMAT))
-            
         conn.recv(1024).decode(FORMAT)
-    
-    print("Client ", nClients + 1, " end!!")
+    print("Quit")
 
-
-print("Server SIDE")
-print("server: ", HOST, SERVER_PORT)
-print("Waiting for Client")
-
-nClients = 0
-while nClients < 3:
-    try:
-        conn, addr = s.accept()
-        thr = threading.Thread(target=handleClient, args=(conn, addr))
-        thr.daemon = False
-        thr.start()
-        nClients += 1
-    except:
-        print("error")
+try:
+    conn, addr = s.accept()
+    handleClient(conn, addr)    
+except:
+    print("error")
 conn.close()
