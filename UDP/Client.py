@@ -1,7 +1,8 @@
 import socket
 import hashlib
-import os
-import threading
+# import os
+# import threading
+# import time
 
 
 def calculate_checksum(data):
@@ -14,6 +15,22 @@ client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 client_sock.bind(('127.0.0.1', 12345))
 sequence_number = 0
 ack_number = 0
+
+
+def recv_chunk():
+    global sequence_number
+    global ack_number
+    
+    temp = int(ack_number)
+    packet = client_sock.recvfrom(1024)
+    seq_s, ack_s, checksum, data = packet.decode().split('|')
+    
+    while int(ack_number) == temp:
+        if ack_number == seq_s:
+            if calculate_checksum(data) == checksum:
+                ack_number += len(data)
+        response_packet = f"{sequence_number}|{ack_number}"
+        client_sock.sendto(response_packet, server_address)            
 
 
 def send_message(sequence_number, ack_number, message):
@@ -34,8 +51,21 @@ def send_message(sequence_number, ack_number, message):
     return sequence_number
 
 
+# def display_progress(file_size):
+#     global progress
+#     while True:
+#         with progress_lock:
+#             total_received = sum(progress)
+#         percent = (total_received / file_size) * 100
+#         print(f"\rDownload Progress: {percent:.2f}%", end="")
+
+#         if total_received >= file_size:
+#             print("\nDownload complete.")
+#             break
+#         time.sleep(0.5)
+
+
 data_chunks = ["Hello", "World", "This", "is", "RDT"]
-#message = input("Enter message: ")
 for data in data_chunks:
     sequence_number = send_message(sequence_number, ack_number, data)
 
@@ -45,7 +75,7 @@ while True:
         # Nhận gói tin
         packet, client_address = sock.recvfrom(1024)
         packet = packet.decode()
-        print(f"Received: {packet}")        
+        print(f"Received: {packet}")      
         # Phân tích gói tin
         sequence_number, checksum, data = packet.split('|')
         sequence_number = int(sequence_number)

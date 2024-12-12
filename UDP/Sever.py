@@ -1,25 +1,81 @@
 import socket
-import time
-import threading
+# import time
+# import threading
 import hashlib
 import os
+
+CHUNK_SIZE = 1024 * 1024
+server_address = ('127.0.0.1', 61504)
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(server_address)
+TIMEOUT = 1
+# sock.settimeout(2)  # Timeout 2 giây
+sequence_number = 0
+ack_number = 0
+print("Server: ", sock.getsockname(), "is waiting for message!!!")
 
 
 def calculate_checksum(data):
     return hashlib.md5(data.encode()).hexdigest()
 
 
-server_address = ('127.0.0.1', 61504)
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(server_address)
-# sock.settimeout(2)  # Timeout 2 giây
+def send_chunk(client_address, filename, chunk_id, total_chunks):
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-sequence_number = 0
-ack_number = 0
-print("Server: ", sock.getsockname(), "is waiting for message!!!")
+        # Đọc dữ liệu chunk từ file
+        file_size = os.path.getsize(filename)
+        start = chunk_id * (file_size // total_chunks)  # Bắt đầu chunk
+        end = start + (file_size // total_chunks)      # Kết thúc chunk
+        if chunk_id == total_chunks - 1:  # Chunk cuối có thể chứa phần dư
+            end = file_size
+
+        with open(filename, "rb") as f:
+            f.seek(start)
+            while start < end:
+                data = f.read(min(CHUNK_SIZE, end - start))
+                if not data:
+                    break
+                # server_socket.sendto(data, client_address)
+                start += len(data)
+
+        print(f"Chunk {chunk_id} sent to Client")
+        server_socket.close()
+    except Exception as e:
+        print(f"Error sending chunk {chunk_id}: {e}")
 
 
-def recv_message(sequence_number, ack_number):
+def send_bytes_rdt(data, client_address, server_socket):
+    global sequence_number
+    
+    # Tính checksum
+    checksum = calculate_checksum(data)
+       
+    # Thêm các trường thông tin vào message --> packet
+    packet = f"{sequence_number}|{ack_number}|{checksum}|{data}"
+    server_socket.sendto(packet.encode(), client_address)
+    
+    # Nhận gói tin phản hồi
+    # Chờ ACK
+    # try:
+    #     server_socket.settimeout(TIMEOUT)
+    #     ack_data, addr = server_socket.recvfrom(1024)
+
+    #     if ack_sequence == sequence_number:
+    #         print(f"Received ACK for sequence {sequence_number}")
+    #         sequence_number += 1
+    # except socket.timeout:
+    #     print(f"Timeout for sequence {sequence_number}, resending...")
+    
+    response_packet, _ = server_socket.recvfrom(1024)
+    seq_c, ack_c = response_packet.encode().split('|')
+    while sequence_number == ack_c:
+        server_socket.sendto(packet.encode(), client_address)
+        response_packet, _ = server_socket.recvfrom(1024)
+        response_packet = response_packet.decode()
+
+
+def recv_message(sequence_number, ack_number, message):
     while True:
         # Nhận tin nhắn từ client
         packet, client_address = sock.recvfrom(1024)
@@ -42,31 +98,9 @@ def recv_message(sequence_number, ack_number):
         response = "NOK"
         # Gửi gói tin phản hồi
         sock.sendto(response.encode(), client_address)
-    return ack_number
+    return packet, client_address
 
 
-def send_file(filename, server_ip, server_port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_address = (server_ip, server_port)
-    
-    with open(filename, 'rb') as f:
-        chunk = f.read(1024)
-        while chunk:
-            sock.sendto(chunk, server_address)
-            ack, _ = sock.recvfrom(1024)
-            if ack.decode() != 'ACK':
-                print("Failed to receive ACK, resending chunk")
-                continue
-            chunk = f.read(1024)
-    
-    sock.sendto(b'EOF', server_address)
-    
-
-ack_number = recv_message(sequence_number, ack_number)
-ack_number = recv_message(sequence_number, ack_number)
-ack_number = recv_message(sequence_number, ack_number)
-ack_number = recv_message(sequence_number, ack_number)
-ack_number = recv_message(sequence_number, ack_number)
 """
 for chunk in data_chunks:
     while True:
