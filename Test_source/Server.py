@@ -69,3 +69,79 @@ def start_server():
 
 if __name__ == "__main__":
     start_server()
+
+
+
+import socket
+import os
+import time
+
+# Configurations
+HOST = '127.0.0.1'
+PORT = 12345
+CHUNK_SIZE = 1024  # 1 KB
+TIMEOUT = 2  # seconds
+FILE_LIST = {
+    "File1.zip": "test_files/File1.zip",
+    "File2.zip": "test_files/File2.zip"
+}
+
+def send_file(server_socket, client_addr, file_name):
+    try:
+        file_path = FILE_LIST[file_name]
+        file_size = os.path.getsize(file_path)
+
+        # Gửi thông tin file tới client
+        server_socket.sendto(f"{file_name} {file_size}".encode(), client_addr)
+        print(f"Sending file '{file_name}' ({file_size} bytes) to {client_addr}")
+
+        # Đọc file và gửi từng chunk
+        seq_num = 0
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+
+                # Gói tin gồm sequence number và dữ liệu
+                packet = f"{seq_num:08d}".encode() + chunk
+                while True:
+                    server_socket.sendto(packet, client_addr)
+
+                    # Chờ ACK từ client
+                    try:
+                        server_socket.settimeout(TIMEOUT)
+                        ack, _ = server_socket.recvfrom(1024)
+                        ack_seq = int(ack.decode())
+                        if ack_seq == seq_num:
+                            print(f"ACK received for seq {seq_num}")
+                            break
+                    except socket.timeout:
+                        print(f"Resending packet {seq_num}")
+
+                seq_num += 1
+
+        # Gửi gói tin kết thúc
+        server_socket.sendto(b"END", client_addr)
+        print("File transfer complete.")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def main():
+    # Tạo UDP socket
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server_socket.bind((HOST, PORT))
+    print(f"Server listening on {HOST}:{PORT}")
+
+    while True:
+        print("Waiting for client...")
+        data, client_addr = server_socket.recvfrom(1024)
+        file_name = data.decode()
+
+        if file_name in FILE_LIST:
+            send_file(server_socket, client_addr, file_name)
+        else:
+            server_socket.sendto(b"ERROR: File not found", client_addr)
+
+if __name__ == "__main__":
+    main()
