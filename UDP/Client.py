@@ -5,22 +5,66 @@ import threading
 import time
 
 PACKET_SIZE = 1024 * 1024
-MAX_PACKET_SIZE =  65507
+MAX_PACKET_SIZE = 65507
 # Cấu hình UDP socket
 server_address = ('127.0.0.1', 61504)
 
 
 class FileClient:
-    def __init__(self, output_file):
+    def __init__(self, output_file, filename):
         self.output_file = output_file
         self.chunks_data = [None] * 4
         self.lock = threading.Lock()
         self.progress = 0
+        self.filename = filename
+        self.output_file = "../test-codes/receive-file/" + filename
+        self.chunks = []
+        self.num_chunk = 4
+        
+    def read_input_file(self):
+        filename = "../input.txt"
+        start = 0
 
+        try:
+            while True:
+                with open(filename, "r") as f:
+                    f.seek(start)
+                    new_files = [line.strip() for line in f.readlines()]
+                    start = f.tell()
+                
+                for file in new_files:
+                    if file == "": continue
+                    self.need_file.put(file)
+                        
+                f.close()
+                time.sleep(5)
+        except Exception as e:
+            print(f"Error in send_request: {e}")
+        finally:
+            self.socket.close()
+    
+    def send_request(self):
+        try:
+            while True:
+                if not self.need_file.empty():
+                    filename = self.need_file.get()
+                    msg = "send " + filename
+                    print(msg)
+                    self.socket.send(msg.encode())
+                    
+                    server_response = self.socket.recv(1024).decode()
+                    print("\033[1;31;40m" + "Server: " + server_response + "\033[0m")
 
+                    if "not exist" not in server_response:
+                        self.rcv_file(filename)
+
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            self.socket.close()
+            
     def calculate_checksum(data):
         return hashlib.md5(data.encode()).hexdigest()
-
 
     def recv_chunk(self, chunk_id):
         try:
@@ -49,7 +93,6 @@ class FileClient:
         except Exception as e:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
-
     def update_progress(chunks_progress, file_name):
         # In 4 dòng cố định ban đầu
         for i in range(len(chunks_progress)):
@@ -60,7 +103,6 @@ class FileClient:
                 # Di chuyển con trỏ về đầu dòng và cập nhật phần trăm
                 print(f"\033[{i + 1}FDownloading File5.zip part {i + 1} ....  {progress}%", end='\r')
             time.sleep(0.1)
-
 
     def merge_chunks(self):
         with open(self.output_file, "wb") as f:
@@ -80,30 +122,10 @@ class FileClient:
 
         self.merge_chunks()
 
+
 if __name__ == "__main__":
     client = FileClient("received_file.txt")
-    client.start_client()
-
-
-def send_message(client_sock : socket, message):
-    client_sock.settimeout(1)
-    ok = False
-    while True:
-        # Tính checksum
-        checksum = calculate_checksum(message)
-        # Thêm các trường thông tin vào message --> packet
-        packet = f"{checksum}|{message}"
-        client_sock.sendto(packet.encode(), server_address)
-        try:
-            # Nhận gói tin phản hồi
-            response, _ = client_sock.recvfrom(1024)
-            response = response.decode()
-            # Dừng khi nhận đc OK
-            if response == "OK":
-                break
-        except socket.timeout:
-            pass
-
+    client.start_client() 
 
 # def display_progress(file_size):
 #     global progress

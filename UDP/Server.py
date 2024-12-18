@@ -5,7 +5,7 @@ import hashlib
 import os
 
 PACKET_SIZE = 1024 * 1024
-MAX_PACKET_SIZE =  65507
+MAX_PACKET_SIZE = 65507
 server_address = ('127.0.0.1', 61504)
 TIMEOUT = 1
 
@@ -25,18 +25,15 @@ class FileServer:
             self.server_socket.bind((self.host, self.port))
             self.server_socket.settimeout(TIMEOUT)
 
-
     def calculate_checksum(self, data):
         return hashlib.md5(data.encode()).hexdigest()
     
-
     def packaging(self, data, sequence_number):
         # Tính checksum
         checksum = self.calculate_checksum(data)
         # Thêm các trường thông tin vào message --> packet
         packet = f"{sequence_number}|{checksum}|{data}"
         return packet
-
 
     def send_chunk(self, file_name, chunk_id):
         # nhận tin nhắn khởi tạo socket
@@ -78,14 +75,12 @@ class FileServer:
         except Exception as e:
             print(f"Error sending chunk {chunk_id}: {e}")
 
-
     def update_progress(self, sent_bytes):
         with self.lock:
             self.progress += sent_bytes
             percent = (self.progress / self.file_size) * 100
             print(f"Progress: {percent:.2f}%", end="\r")
     
-
     def start_server(self):
         try:
             for chunk_id in range(4):
@@ -94,7 +89,6 @@ class FileServer:
                 ).start()
         except KeyboardInterrupt:
             print("\nShutting down server...")
-
 
     # def start_chunk_server(self, chunk_port, chunk_id):
     #     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
@@ -109,7 +103,6 @@ class FileServer:
     #         )
     #         self.handle_client(client_address, chunk_start, chunk_end, chunk_id)
     
-
     # def recv_message(self, client_address):
     #     while True:
     #         try:
@@ -135,7 +128,8 @@ class FileServer:
     #         except socket.timeout:
     #             pass
     #         return True
-
+    
+    
 if __name__ == "__main__":
-    server = FileServer("127.0.0.1", 8000, "input.txt")
+    server = FileServer("127.0.0.1", 61504, "input.txt")
     server.start_server()
