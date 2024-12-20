@@ -21,9 +21,10 @@ class FileServer:
         self.lock = threading.Lock()
         self.progress = 0
         self.client = []
+        self.dic_ack = {}
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as self.server_socket:
             self.server_socket.bind((self.host, self.port))
-            self.server_socket.settimeout(TIMEOUT)
+            self.server_socket.settimeout(self.TIMEOUT)
 
     def calculate_checksum(self, data):
         return hashlib.md5(data.encode()).hexdigest()
@@ -36,10 +37,8 @@ class FileServer:
         return packet
 
     def send_chunk(self, file_name, chunk_id):
-        # nhận tin nhắn khởi tạo socket
-        _, client_address = self.server_socket.recvfrom(1024)
-        # lưu địa chỉ của socket client
-        self.client.append(client_address)
+        # Nhận tin nhắn khởi tạo kết nối
+        client_address = self.recv_message()
         # gửi bytes
         sequence_number = 0
         try:
@@ -61,16 +60,27 @@ class FileServer:
                         # đóng gói thành gói tin
                         packet = self.packaging(data, sequence_number)
                         # gửi đi
-                        self.server_socket.sendto(packet.encode(), client_address)
+                        self.server_socket.sendto(
+                            packet.encode(), client_address
+                        )
                         # chờ nhận ack
                         try:
-                            ack, _ = self.server_socket.recvfrom(1024)
+                            ack, address = self.server_socket.recvfrom(PACKET_SIZE)
                             ack = int(ack.decode())
-                            if ack == sequence_number:
-                                break
+                            # Nhận đúng gói ack
+                            if address == client_address:
+                                if ack == sequence_number:
+                                    break
+                            else:
+                                # Nhận ack không phải của mình lưu lại
+                                self.dic_ack[address] = ack
+                                # Nếu có địa chỉ của mình trong từ điển ack
+                                if client_address in self.dic_ack:
+                                    data = self.dic_ack.pop(client_address)
+                                    if data == sequence_number:
+                                        break
                         except socket.timeout:
                             continue
-
                     start += len(data)
         except Exception as e:
             print(f"Error sending chunk {chunk_id}: {e}")
@@ -80,56 +90,30 @@ class FileServer:
             self.progress += sent_bytes
             percent = (self.progress / self.file_size) * 100
             print(f"Progress: {percent:.2f}%", end="\r")
-    
+             
     def start_server(self):
         try:
+            threads = []
             for chunk_id in range(4):
-                threading.Thread(
-                    target=self.send_chunk, args=(self.file_name, chunk_id)
+                thread = threading.Thread(
+                    target=self.send_chunk, args=(self.file_pathpath, chunk_id)
                 ).start()
+                threads.append(thread)
+                thread.join()
         except KeyboardInterrupt:
             print("\nShutting down server...")
+              
+    def recv_message(self):
+        while True:
+            try:
+                message, client_address = self.server_socket.recvfrom(PACKET_SIZE)
+                response = "OK"
+                self.server_socket.sendto(response.encode(), client_address)
+                return client_address
+            except Exception as e:
+                print(f"Error receiving message: {e}")
+                
 
-    # def start_chunk_server(self, chunk_port, chunk_id):
-    #     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
-    #         server_socket.bind((self.host, chunk_port))
-    #         server_socket.settimeout(TIMEOUT)
-    #         print(f"Server listening on port {chunk_port} for chunk {chunk_id}...")
-    #         # tin nhắn khơi tạo
-    #         message, client_address = server_socket.recvfrom(1024)
-    #         chunk_start = chunk_id * self.chunk_size
-    #         chunk_end = (
-    #             (chunk_id + 1) * self.chunk_size if chunk_id < 3 else self.file_size
-    #         )
-    #         self.handle_client(client_address, chunk_start, chunk_end, chunk_id)
-    
-    # def recv_message(self, client_address):
-    #     while True:
-    #         try:
-    #             # Nhận tin nhắn từ client
-    #             packet, address = self.server_socket.recvfrom(1024)
-    #             #if client_address == address:                    packet = packet.decode()
-    #             # phân tách gói tin
-    #             checksum, message = packet.split('|')
-    #             # tin nhắn phản hồi
-    #             response = 0
-    #             # kiểm tra checksum
-    #             if self.calculate_checksum(message) == checksum:   
-    #                 #print("Received: ", message, " from ", client_address)
-    #                 response = "OK"
-    #                 # Gửi gói tin phản hồi OK khi không có lỗi
-    #                 self.server_socket.sendto(response.encode(), address)
-    #                 break
-
-    #             # Nếu gói tin bị lỗi gửi NOK
-    #             response = "NOK"
-    #             # Gửi gói tin phản hồi
-    #             self.server_socket.sendto(response.encode(), address)
-    #         except socket.timeout:
-    #             pass
-    #         return True
-    
-    
 if __name__ == "__main__":
     server = FileServer("127.0.0.1", 61504, "input.txt")
     server.start_server()

@@ -14,6 +14,7 @@ class FileClient:
     def __init__(self, output_file, filename):
         self.output_file = output_file
         self.chunks_data = [None] * 4
+        self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
         self.progress = 0
         self.filename = filename
@@ -69,10 +70,9 @@ class FileClient:
     def recv_chunk(self, chunk_id):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+                client_socket.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
-                ping_msg = "init"
-                client_socket.sendto(ping_msg.encode(), server_address)
-                print(f"Socket for received chunk {chunk_id}...")
+                self.send_message(client_socket, chunk_id)
                 # tải chunk
                 ack = 0
                 received_bytes = 0
@@ -81,13 +81,18 @@ class FileClient:
                         packet = client_socket.recvfrom(PACKET_SIZE)
                         seq_s, checksum, data = packet.split('|')
                         # tin nhắn phản hồi
-                        if self.calculate_checksum(data) == checksum and seq_s == ack:
-                            received_bytes += len(data)
-                            client_socket.sendto(f"{seq_s}".encode(), server_address)
-                            self.chunks_data[chunk_id] += data
-                            ack += 1
+                        if self.calculate_checksum(data) == checksum:
+                            if seq_s == ack:
+                                received_bytes += len(data)
+                                client_socket.sendto(
+                                    f"{seq_s}".encode(), server_address
+                                )
+                                self.chunks_data[chunk_id] += data
+                                ack += 1
                         else:
-                            client_socket.sendto(f"{ack - 1}".encode(), server_address)
+                            client_socket.sendto(
+                                f"{ack - 1}".encode(), server_address
+                            )
                     except:
                         pass
         except Exception as e:
@@ -121,7 +126,23 @@ class FileClient:
             thread.join()
 
         self.merge_chunks()
-
+        
+    def send_message(self, client_socket, chunk_id):
+        cnt = 1
+        while True:
+            message = "init"
+            client_socket.sendto(message.encode(), server_address)
+            try:
+                ack, _ = client_socket.recvfrom(PACKET_SIZE)
+                if ack.decode() == "OK":
+                    print(f"Socket for received chunk {chunk_id}...")
+                    break
+            except socket.timeout:
+                cnt = cnt + 1
+                if cnt == 10:
+                    print("Can send PING_MSG to server\n")
+                    break
+        
 
 if __name__ == "__main__":
     client = FileClient("received_file.txt")
