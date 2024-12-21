@@ -19,12 +19,29 @@ class FileServer:
         self.chunk_size = self.file_size // 4
         self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
+        dir_path = "C:\Users\ADMIN\Desktop\gitzxcaaewew\UDP\input_file"
+        self.file_list = [
+                f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
+                for f in os.listdir(dir_path)
+                if os.path.isfile(os.path.join(dir_path, f))
+        ]
         self.progress = 0
         self.client = []
         self.dic_ack = {}
+        # khởi tạo server socket
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as self.server_socket:
             self.server_socket.bind((self.host, self.port))
             self.server_socket.settimeout(self.TIMEOUT)
+
+    def check_exist_file(self, filename):
+        for f in self.file_list:
+            if filename in f:
+                return True
+        return False
+
+    def send_file_list(self, client_address):
+        file_list_str = "List of files:\n" + "\n".join(self.file_list)
+        self.send_message(file_list_str, client_address)
 
     def calculate_checksum(self, data):
         return hashlib.md5(data.encode()).hexdigest()
@@ -55,7 +72,8 @@ class FileServer:
                     data = f.read(min(PACKET_SIZE, end - start))
                     if not data:
                         break
-                    
+                    # biến đếm số lần gửi lại (tối đa 100 lần)
+                    cnt = 1
                     while True:
                         # đóng gói thành gói tin
                         packet = self.packaging(data, sequence_number)
@@ -80,7 +98,10 @@ class FileServer:
                                     if data == sequence_number:
                                         break
                         except socket.timeout:
-                            continue
+                            cnt = cnt + 1
+                            if cnt == 10:
+                                print("ERROR send data!!\n")
+                                break
                     start += len(data)
         except Exception as e:
             print(f"Error sending chunk {chunk_id}: {e}")
@@ -92,6 +113,11 @@ class FileServer:
             print(f"Progress: {percent:.2f}%", end="\r")
              
     def start_server(self):
+        # Chờ PING_MSG từ client 
+        client_address = self.recv_message()
+        # gửi danh sách file
+        self.send_file_list(client_address)
+        # chạy server
         try:
             threads = []
             for chunk_id in range(4):
@@ -104,14 +130,33 @@ class FileServer:
             print("\nShutting down server...")
               
     def recv_message(self):
+        cnt = 1
         while True:
             try:
                 message, client_address = self.server_socket.recvfrom(PACKET_SIZE)
                 response = "OK"
                 self.server_socket.sendto(response.encode(), client_address)
                 return client_address
-            except Exception as e:
-                print(f"Error receiving message: {e}")
+            except socket.timeout:
+                cnt = cnt + 1
+                if cnt == 100:
+                    print("Can not receive PING_MSG from client\n")
+                    break
+
+    def send_message(self, message, client_address):
+        cnt = 1
+        while True:
+            self.server_socket.sendto(message.encode(), client_address)
+            try:
+                ack, _ = server_address.recvfrom(PACKET_SIZE)
+                if ack.decode() == "OK":
+                    print("Files list has been sent to client")
+                    break
+            except socket.timeout:
+                cnt = cnt + 1
+                if cnt == 100:
+                    print("Can send Files list to client\n")
+                    break
                 
 
 if __name__ == "__main__":

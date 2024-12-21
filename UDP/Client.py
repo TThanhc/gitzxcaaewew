@@ -11,16 +11,17 @@ server_address = ('127.0.0.1', 61504)
 
 
 class FileClient:
-    def __init__(self, output_file, filename):
-        self.output_file = output_file
+    def __init__(self, filename, file_size):
         self.chunks_data = [None] * 4
         self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
-        self.progress = 0
+        self.progress = [0, 0, 0, 0]
+        self.file_size = file_size
         self.filename = filename
         self.output_file = "../test-codes/receive-file/" + filename
         self.chunks = []
         self.num_chunk = 4
+        self.chunk_size = self.file_size // self.num_chunk
         
     def read_input_file(self):
         filename = "../input.txt"
@@ -76,8 +77,10 @@ class FileClient:
                 # tải chunk
                 ack = 0
                 received_bytes = 0
+                chunk_data = b""
                 while True:
                     try:
+                        # nhận gói tin
                         packet = client_socket.recvfrom(PACKET_SIZE)
                         seq_s, checksum, data = packet.split('|')
                         # tin nhắn phản hồi
@@ -87,14 +90,19 @@ class FileClient:
                                 client_socket.sendto(
                                     f"{seq_s}".encode(), server_address
                                 )
-                                self.chunks_data[chunk_id] += data
+                                chunk_data += data
+                                # Dừng khi nhận đủ chunk
+                                if chunk_data >= self.chunk_size:
+                                    break
                                 ack += 1
                         else:
                             client_socket.sendto(
                                 f"{ack - 1}".encode(), server_address
                             )
                     except:
-                        pass
+                        continue
+
+                self.chunks_data[chunk_id] = chunk_data
         except Exception as e:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
@@ -116,6 +124,14 @@ class FileClient:
         print(f"\nFile saved to {self.output_file}")
 
     def start_client(self):
+        # tin nhắn khởi tạo
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+                client_socket.settimeout(self.TIMEOUT)
+                # tin nhắn khởi tạo socket
+                self.send_message(client_socket, chunk_id)
+                # nhận danh sách file
+                self.recv_message(client_socket)
+        # chạy client
         threads = []
         for chunk_id in range(4):
             thread = threading.Thread(target=self.recv_chunk, args=(chunk_id))
@@ -139,8 +155,23 @@ class FileClient:
                     break
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == 10:
-                    print("Can send PING_MSG to server\n")
+                if cnt == 100:
+                    print("Can not send PING_MSG to server\n")
+                    break
+    
+    def recv_message(self, client_socket):
+        cnt = 1
+        while True:
+            try:
+                message, _ = client_socket.recvfrom(PACKET_SIZE)
+                response = "OK"
+                client_socket.sendto(response.encode(), server_address)
+                print(message)
+                break
+            except Exception as e:
+                cnt = cnt + 1
+                if cnt == 100:
+                    print("Can not receive list file from server\n")
                     break
         
 
