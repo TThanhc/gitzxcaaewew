@@ -4,7 +4,7 @@ import threading
 import hashlib
 import os
 
-PACKET_SIZE = 1024 * 1024
+PACKET_SIZE = 1024
 MAX_PACKET_SIZE = 65507
 TIMEOUT = 1
 
@@ -19,6 +19,7 @@ class FileServer:
         self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
         dir_path = r"UDP\test_file"
+        self.MAX_TRIES = 10
         self.file_list = [
             f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
             for f in os.listdir(dir_path)
@@ -68,6 +69,9 @@ class FileServer:
                 f.seek(start)
                 while start < end:
                     data = f.read(min(PACKET_SIZE, end - start))
+                    # _____
+                    print(data, "\n")
+                    # _____
                     if not data:
                         break
                     # biến đếm số lần gửi lại (tối đa 100 lần)
@@ -101,7 +105,7 @@ class FileServer:
                                     break
                         except socket.timeout:
                             cnt = cnt + 1
-                            if cnt == 100:
+                            if cnt == self.MAX_TRIES:
                                 print("ERROR send data!!\n")
                                 break
                     start += len(data)
@@ -116,18 +120,25 @@ class FileServer:
              
     def start_server(self):
         # Chờ PING_MSG từ client 
+        print("Server ", self.server_socket.getsockname(), "is waiting for PING_MSG\n")
         client_address = self.recv_message()
         # gửi danh sách file
-        self.send_file_list(client_address)
+        if client_address is not None:
+            self.send_file_list(client_address)
         # chạy server
         try:
             threads = []
             for chunk_id in range(4):
                 thread = threading.Thread(
                     target=self.send_chunk, args=(self.file_path, chunk_id)
-                ).start()
-                threads.append(thread)
-                thread.join()
+                )
+                if thread is not None:
+                    threads.append(thread)
+                    thread.start()
+                    
+            for thread in threads:
+                if thread is not None:
+                    thread.join()
         except KeyboardInterrupt:
             print("\nShutting down server...")
               
@@ -138,10 +149,11 @@ class FileServer:
                 message, client_address = self.server_socket.recvfrom(PACKET_SIZE)
                 response = "OK"
                 self.server_socket.sendto(response.encode(), client_address)
+                print("Received PING_MSG from client ", client_address, "\n")
                 return client_address
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == 100:
+                if cnt == self.MAX_TRIES:
                     print("Can not receive PING_MSG from client\n")
                     break
 
@@ -152,11 +164,11 @@ class FileServer:
             try:
                 ack, _ = self.server_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    print("Files list has been sent to client")
+                    print("Files list has been sent to client\n")
                     break
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == 100:
+                if cnt == self.MAX_TRIES:
                     print("Can send Files list to client\n")
                     break
                 

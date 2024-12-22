@@ -4,7 +4,7 @@ import hashlib
 import threading
 import time
 
-PACKET_SIZE = 1024 * 1024
+PACKET_SIZE = 1024
 MAX_PACKET_SIZE = 65507
 # Cấu hình UDP socket
 server_address = ('127.0.0.1', 61504)
@@ -70,10 +70,10 @@ class FileClient:
 
     def recv_chunk(self, chunk_id):
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
-                client_socket.settimeout(self.TIMEOUT)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_sock:
+                client_sock.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
-                self.send_message(client_socket, chunk_id)
+                self.send_message(client_sock)
                 # tải chunk
                 ack = 0
                 received_bytes = 0
@@ -81,13 +81,14 @@ class FileClient:
                 while True:
                     try:
                         # nhận gói tin
-                        packet, _ = client_socket.recvfrom(PACKET_SIZE)
+                        packet, _ = client_sock.recvfrom(PACKET_SIZE)
                         seq_s, checksum, data = packet.split('|')
                         # tin nhắn phản hồi
                         if self.calculate_checksum(data) == checksum:
                             if seq_s == ack:
+                                print(data, "\n")
                                 received_bytes += len(data)
-                                client_socket.sendto(
+                                client_sock.sendto(
                                     f"{seq_s}".encode(), server_address
                                 )
                                 chunk_data += data
@@ -96,7 +97,7 @@ class FileClient:
                                     break
                                 ack += 1
                         # gửi lại ack trc đó
-                        client_socket.sendto(
+                        client_sock.sendto(
                             f"{ack - 1}".encode(), server_address
                         )
                     except:
@@ -119,7 +120,11 @@ class FileClient:
     def merge_chunks(self):
         with open(self.output_file, "wb") as f:
             for chunk in self.chunks_data:
-                f.write(chunk)
+                if chunk is not None:
+                    f.write(chunk)
+                else:
+                    print("Error write bytes\n")
+                    return
         print(f"\nFile saved to {self.output_file}")
 
     def start_client(self):
@@ -130,21 +135,23 @@ class FileClient:
         self.send_message(client_socket)
         # nhận danh sách file
         self.recv_message(client_socket)
-
+        
         # chạy client
         threads = []
-        for chunk_id in range(4):
-            thread = threading.Thread(target=self.recv_chunk, args=(chunk_id))
-            threads.append(thread)
-            thread.start()
+        for chunk_id in range(self.num_chunk):
+            thread = threading.Thread(target=self.recv_chunk, args=(chunk_id,))
+            if thread is not None:
+                threads.append(thread)
+                thread.start()
 
         for thread in threads:
-            thread.join()
+            if thread is not None:
+                thread.join()
 
         self.merge_chunks()
         client_socket.close()
         
-    def send_message(self, client_socket):
+    def send_message(self, client_socket : socket):
         cnt = 1
         while True:
             message = "init"
@@ -167,7 +174,7 @@ class FileClient:
                 message, _ = client_socket.recvfrom(PACKET_SIZE)
                 response = "OK"
                 client_socket.sendto(response.encode(), server_address)
-                print(message)
+                print(message.decode())
                 break
             except socket.timeout:
                 cnt = cnt + 1
@@ -177,7 +184,7 @@ class FileClient:
         
 
 if __name__ == "__main__":
-    client = FileClient("received_file.txt", 16)
+    client = FileClient("received_file.txt", 10730)
     client.start_client()
  
 
