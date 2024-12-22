@@ -1,6 +1,6 @@
 import socket
 import hashlib
-import os
+#import os
 import threading
 import time
 
@@ -18,7 +18,7 @@ class FileClient:
         self.progress = [0, 0, 0, 0]
         self.file_size = file_size
         self.filename = filename
-        self.output_file = "../test-codes/receive-file/" + filename
+        self.output_file = r"UDP\receive-file" + filename
         self.chunks = []
         self.num_chunk = 4
         self.chunk_size = self.file_size // self.num_chunk
@@ -95,7 +95,7 @@ class FileClient:
                                 if chunk_data >= self.chunk_size:
                                     break
                                 ack += 1
-                        # gui
+                        # gửi lại ack trc đó
                         client_socket.sendto(
                             f"{ack - 1}".encode(), server_address
                         )
@@ -110,7 +110,6 @@ class FileClient:
         # In 4 dòng cố định ban đầu
         for i in range(len(chunks_progress)):
             print(f"Downloading File", file_name, " part {i + 1} ....  0%")
-
         while any(progress < 100 for progress in chunks_progress):
             for i, progress in enumerate(chunks_progress):
                 # Di chuyển con trỏ về đầu dòng và cập nhật phần trăm
@@ -128,7 +127,7 @@ class FileClient:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.settimeout(self.TIMEOUT)
         # tin nhắn khởi tạo socket
-        self.send_message(client_socket, chunk_id)
+        self.send_message(client_socket)
         # nhận danh sách file
         self.recv_message(client_socket)
 
@@ -145,7 +144,7 @@ class FileClient:
         self.merge_chunks()
         client_socket.close()
         
-    def send_message(self, client_socket, chunk_id):
+    def send_message(self, client_socket):
         cnt = 1
         while True:
             message = "init"
@@ -153,7 +152,7 @@ class FileClient:
             try:
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    print(f"Socket for received chunk {chunk_id}...")
+                    # print(f"Socket for received chunk {chunk_id}...")
                     break
             except socket.timeout:
                 cnt = cnt + 1
@@ -161,7 +160,7 @@ class FileClient:
                     print("Can not send PING_MSG to server\n")
                     break
     
-    def recv_message(self, client_socket):
+    def recv_message(self, client_socket : socket):
         cnt = 1
         while True:
             try:
@@ -170,7 +169,7 @@ class FileClient:
                 client_socket.sendto(response.encode(), server_address)
                 print(message)
                 break
-            except Exception as e:
+            except socket.timeout:
                 cnt = cnt + 1
                 if cnt == 100:
                     print("Can not receive list file from server\n")
@@ -178,8 +177,9 @@ class FileClient:
         
 
 if __name__ == "__main__":
-    client = FileClient("received_file.txt")
-    client.start_client() 
+    client = FileClient("received_file.txt", 16)
+    client.start_client()
+ 
 
 # def display_progress(file_size):
 #     global progress

@@ -18,14 +18,13 @@ class FileServer:
         self.chunk_size = self.file_size // 4
         self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
-        dir_path = "C:\Users\ADMIN\Desktop\gitzxcaaewew\UDP\input_file"
+        dir_path = r"UDP\test_file"
         self.file_list = [
-                f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
-                for f in os.listdir(dir_path)
-                if os.path.isfile(os.path.join(dir_path, f))
+            f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
+            for f in os.listdir(dir_path)
+            if os.path.isfile(os.path.join(dir_path, f))
         ]
         self.progress = 0
-        self.client = []
         self.dic_ack = {}
         # khởi tạo server socket
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
@@ -85,21 +84,24 @@ class FileServer:
                             ack, address = self.server_socket.recvfrom(PACKET_SIZE)
                             ack = int(ack.decode())
                             # Nhận đúng gói ack
-                            if address == client_address:
-                                if ack == sequence_number:
-                                    sequence_number += 1
+                            if address == client_address and ack == sequence_number:
+                                sequence_number += 1
+                                break
+                            # Nhận ack không phải của mình lưu lại
+                            self.dic_ack[address] = ack
+                            # chờ nếu có địa chỉ của mình trong dic_ack
+                            while True:
+                                try:
+                                    if client_address in self.dic_ack:
+                                        ack = self.dic_ack.pop(client_address)
+                                        if ack == sequence_number:
+                                            sequence_number += 1
+                                            break
+                                except socket.timeout:
                                     break
-                            else:
-                                # Nhận ack không phải của mình lưu lại
-                                self.dic_ack[address] = ack
-                                # Nếu có địa chỉ của mình trong từ điển ack
-                                if client_address in self.dic_ack:
-                                    ack = self.dic_ack.pop(client_address)
-                                    if ack == sequence_number:
-                                        break
                         except socket.timeout:
                             cnt = cnt + 1
-                            if cnt == 10:
+                            if cnt == 100:
                                 print("ERROR send data!!\n")
                                 break
                     start += len(data)
@@ -122,7 +124,7 @@ class FileServer:
             threads = []
             for chunk_id in range(4):
                 thread = threading.Thread(
-                    target=self.send_chunk, args=(self.file_pathpath, chunk_id)
+                    target=self.send_chunk, args=(self.file_path, chunk_id)
                 ).start()
                 threads.append(thread)
                 thread.join()
@@ -160,6 +162,6 @@ class FileServer:
                 
 
 if __name__ == "__main__":
-    server = FileServer("127.0.0.1", 61504, "input.txt")
+    server = FileServer("127.0.0.1", 61504, r"UDP\test_file\input.txt")
     server.start_server()
     server.server_socket.close()
