@@ -43,7 +43,7 @@ class FileServer:
         self.send_message(file_list_str, client_address)
 
     def calculate_checksum(self, data):
-        return hashlib.md5(data.encode()).hexdigest()
+        return hashlib.md5(data).hexdigest()
     
     def packaging(self, data, sequence_number):
         # Tính checksum
@@ -69,12 +69,10 @@ class FileServer:
                 f.seek(start)
                 while start < end:
                     data = f.read(min(PACKET_SIZE, end - start))
-                    # _____
-                    print(data, "\n")
-                    # _____
+                    
                     if not data:
                         break
-                    # biến đếm số lần gửi lại (tối đa 100 lần)
+                    # biến đếm số lần gửi lại (tối đa 10 lần)
                     cnt = 1
                     while True:
                         # đóng gói thành gói tin
@@ -88,6 +86,7 @@ class FileServer:
                             ack, address = self.server_socket.recvfrom(PACKET_SIZE)
                             ack = int(ack.decode())
                             # Nhận đúng gói ack
+                            print(address, "\n")
                             if address == client_address and ack == sequence_number:
                                 sequence_number += 1
                                 break
@@ -98,8 +97,10 @@ class FileServer:
                                 try:
                                     if client_address in self.dic_ack:
                                         ack = self.dic_ack.pop(client_address)
+                                        ack = int(ack.decode())
                                         if ack == sequence_number:
                                             sequence_number += 1
+                                            # print(data)
                                             break
                                 except socket.timeout:
                                     break

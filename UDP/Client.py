@@ -21,6 +21,7 @@ class FileClient:
         self.output_file = r"UDP\receive-file" + filename
         self.chunks = []
         self.num_chunk = 4
+        self.MAX_TRIES = 100
         self.chunk_size = self.file_size // self.num_chunk
         
     def read_input_file(self):
@@ -66,7 +67,7 @@ class FileClient:
             self.socket.close()
             
     def calculate_checksum(data):
-        return hashlib.md5(data.encode()).hexdigest()
+        return hashlib.md5(data).hexdigest()
 
     def recv_chunk(self, chunk_id):
         try:
@@ -78,15 +79,18 @@ class FileClient:
                 ack = 0
                 received_bytes = 0
                 chunk_data = b""
+                # biến đếm số lần gửi lại (tối đa 10 lần)
+                cnt = 1
                 while True:
                     try:
                         # nhận gói tin
                         packet, _ = client_sock.recvfrom(PACKET_SIZE)
                         seq_s, checksum, data = packet.split('|')
+                        seq_s = seq_s.decode()
+                        checksum = checksum.decode()
                         # tin nhắn phản hồi
                         if self.calculate_checksum(data) == checksum:
-                            if seq_s == ack:
-                                print(data, "\n")
+                            if int(seq_s) == ack:
                                 received_bytes += len(data)
                                 client_sock.sendto(
                                     f"{seq_s}".encode(), server_address
@@ -97,11 +101,13 @@ class FileClient:
                                     break
                                 ack += 1
                         # gửi lại ack trc đó
-                        client_sock.sendto(
-                            f"{ack - 1}".encode(), server_address
-                        )
-                    except:
-                        continue
+                        response = f"{ack - 1}"
+                        client_sock.sendto(response.encode(), server_address)
+                    except socket.timeout:
+                        cnt = cnt + 1
+                        if cnt == self.MAX_TRIES:
+                            print("Error receive data\n")
+                            break
 
                 self.chunks_data[chunk_id] = chunk_data
         except Exception as e:
