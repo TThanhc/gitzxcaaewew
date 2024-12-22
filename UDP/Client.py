@@ -81,7 +81,7 @@ class FileClient:
                 while True:
                     try:
                         # nhận gói tin
-                        packet = client_socket.recvfrom(PACKET_SIZE)
+                        packet, _ = client_socket.recvfrom(PACKET_SIZE)
                         seq_s, checksum, data = packet.split('|')
                         # tin nhắn phản hồi
                         if self.calculate_checksum(data) == checksum:
@@ -95,10 +95,10 @@ class FileClient:
                                 if chunk_data >= self.chunk_size:
                                     break
                                 ack += 1
-                        else:
-                            client_socket.sendto(
-                                f"{ack - 1}".encode(), server_address
-                            )
+                        # gui
+                        client_socket.sendto(
+                            f"{ack - 1}".encode(), server_address
+                        )
                     except:
                         continue
 
@@ -125,12 +125,13 @@ class FileClient:
 
     def start_client(self):
         # tin nhắn khởi tạo
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
-                client_socket.settimeout(self.TIMEOUT)
-                # tin nhắn khởi tạo socket
-                self.send_message(client_socket, chunk_id)
-                # nhận danh sách file
-                self.recv_message(client_socket)
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_socket.settimeout(self.TIMEOUT)
+        # tin nhắn khởi tạo socket
+        self.send_message(client_socket, chunk_id)
+        # nhận danh sách file
+        self.recv_message(client_socket)
+
         # chạy client
         threads = []
         for chunk_id in range(4):
@@ -142,6 +143,7 @@ class FileClient:
             thread.join()
 
         self.merge_chunks()
+        client_socket.close()
         
     def send_message(self, client_socket, chunk_id):
         cnt = 1

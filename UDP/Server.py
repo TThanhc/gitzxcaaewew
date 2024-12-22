@@ -6,7 +6,6 @@ import os
 
 PACKET_SIZE = 1024 * 1024
 MAX_PACKET_SIZE = 65507
-server_address = ('127.0.0.1', 61504)
 TIMEOUT = 1
 
 
@@ -29,9 +28,9 @@ class FileServer:
         self.client = []
         self.dic_ack = {}
         # khởi tạo server socket
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as self.server_socket:
-            self.server_socket.bind((self.host, self.port))
-            self.server_socket.settimeout(self.TIMEOUT)
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.settimeout(self.TIMEOUT)
 
     def check_exist_file(self, filename):
         for f in self.file_list:
@@ -88,14 +87,15 @@ class FileServer:
                             # Nhận đúng gói ack
                             if address == client_address:
                                 if ack == sequence_number:
+                                    sequence_number += 1
                                     break
                             else:
                                 # Nhận ack không phải của mình lưu lại
                                 self.dic_ack[address] = ack
                                 # Nếu có địa chỉ của mình trong từ điển ack
                                 if client_address in self.dic_ack:
-                                    data = self.dic_ack.pop(client_address)
-                                    if data == sequence_number:
+                                    ack = self.dic_ack.pop(client_address)
+                                    if ack == sequence_number:
                                         break
                         except socket.timeout:
                             cnt = cnt + 1
@@ -148,7 +148,7 @@ class FileServer:
         while True:
             self.server_socket.sendto(message.encode(), client_address)
             try:
-                ack, _ = server_address.recvfrom(PACKET_SIZE)
+                ack, _ = self.server_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
                     print("Files list has been sent to client")
                     break
@@ -162,3 +162,4 @@ class FileServer:
 if __name__ == "__main__":
     server = FileServer("127.0.0.1", 61504, "input.txt")
     server.start_server()
+    server.server_socket.close()
