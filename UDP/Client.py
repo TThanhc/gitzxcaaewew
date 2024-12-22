@@ -4,7 +4,7 @@ import hashlib
 import threading
 import time
 
-PACKET_SIZE = 1024
+PACKET_SIZE = 1024 * 1024
 MAX_PACKET_SIZE = 65507
 # Cấu hình UDP socket
 server_address = ('127.0.0.1', 61504)
@@ -18,7 +18,7 @@ class FileClient:
         self.progress = [0, 0, 0, 0]
         self.file_size = file_size
         self.filename = filename
-        self.output_file = r"UDP\receive-file" + filename
+        self.output_file = "UDP\\receive-file\\" + filename
         self.chunks = []
         self.num_chunk = 4
         self.MAX_TRIES = 100
@@ -66,12 +66,13 @@ class FileClient:
         finally:
             self.socket.close()
             
-    def calculate_checksum(data):
+    def calculate_checksum(self, data):
         return hashlib.md5(data).hexdigest()
 
     def recv_chunk(self, chunk_id):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_sock:
+                client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65535)  # Tăng bộ đệm nhận lên 64KB
                 client_sock.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
                 self.send_message(client_sock)
@@ -85,21 +86,23 @@ class FileClient:
                     try:
                         # nhận gói tin
                         packet, _ = client_sock.recvfrom(PACKET_SIZE)
-                        seq_s, checksum, data = packet.split('|')
+                        seq_s, checksum, data = packet.split(b'|')
                         seq_s = seq_s.decode()
                         checksum = checksum.decode()
                         # tin nhắn phản hồi
                         if self.calculate_checksum(data) == checksum:
                             if int(seq_s) == ack:
                                 received_bytes += len(data)
-                                client_sock.sendto(
-                                    f"{seq_s}".encode(), server_address
-                                )
+                                # gửi ack lại
+                                response = f"{seq_s}"
+                                client_sock.sendto(response.encode(), server_address)
+                                # thêm các byte vào mảng lưu
                                 chunk_data += data
                                 # Dừng khi nhận đủ chunk
-                                if chunk_data >= self.chunk_size:
+                                if received_bytes >= self.chunk_size:
                                     break
                                 ack += 1
+                                continue
                         # gửi lại ack trc đó
                         response = f"{ack - 1}"
                         client_sock.sendto(response.encode(), server_address)
@@ -160,7 +163,8 @@ class FileClient:
     def send_message(self, client_socket : socket):
         cnt = 1
         while True:
-            message = "init"
+            # PING_MSG = "23120088"
+            message = "23120088"
             client_socket.sendto(message.encode(), server_address)
             try:
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)

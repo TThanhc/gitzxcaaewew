@@ -4,7 +4,7 @@ import threading
 import hashlib
 import os
 
-PACKET_SIZE = 1024
+PACKET_SIZE = 1024 * 1024
 MAX_PACKET_SIZE = 65507
 TIMEOUT = 1
 
@@ -45,11 +45,19 @@ class FileServer:
     def calculate_checksum(self, data):
         return hashlib.md5(data).hexdigest()
     
+    # def packaging(self, data, sequence_number):
+    #     # Tính checksum
+    #     checksum = self.calculate_checksum(data)
+    #     # Thêm các trường thông tin vào message --> packet
+    #     packet = f"{sequence_number}|{checksum}|{data}"
+    #     return packet
+    
     def packaging(self, data, sequence_number):
         # Tính checksum
-        checksum = self.calculate_checksum(data)
+        checksum = self.calculate_checksum(data).encode()
+        seq_s = str(sequence_number).encode()
         # Thêm các trường thông tin vào message --> packet
-        packet = f"{sequence_number}|{checksum}|{data}"
+        packet = b"|".join([seq_s, checksum, data])
         return packet
 
     def send_chunk(self, file_name, chunk_id):
@@ -60,11 +68,12 @@ class FileServer:
         try:
             # Đọc dữ liệu chunk từ file
             file_size = os.path.getsize(file_name)
-            start = chunk_id * (file_size // self.chunk_size)  # Bắt đầu chunk
-            end = start + (file_size // self.chunk_size)      # Kết thúc chunk
+            start = chunk_id * (self.chunk_size)  # Bắt đầu chunk
+            end = start + (self.chunk_size)      # Kết thúc chunk
             if chunk_id == self.chunk_size - 1:  # Chunk cuối có thể chứa phần dư
                 end = file_size
-
+                
+            print(start, end)
             with open(file_name, "rb") as f:
                 f.seek(start)
                 while start < end:
@@ -78,32 +87,40 @@ class FileServer:
                         # đóng gói thành gói tin
                         packet = self.packaging(data, sequence_number)
                         # gửi đi
-                        self.server_socket.sendto(
-                            packet.encode(), client_address
-                        )
+                        # self.server_socket.sendto(
+                        #     packet.encode(), client_address
+                        # )
+                        
+                        self.server_socket.sendto(packet, client_address)
                         # chờ nhận ack
                         try:
                             ack, address = self.server_socket.recvfrom(PACKET_SIZE)
                             ack = int(ack.decode())
                             # Nhận đúng gói ack
-                            print(address, "\n")
                             if address == client_address and ack == sequence_number:
                                 sequence_number += 1
                                 break
                             # Nhận ack không phải của mình lưu lại
                             self.dic_ack[address] = ack
                             # chờ nếu có địa chỉ của mình trong dic_ack
-                            while True:
-                                try:
-                                    if client_address in self.dic_ack:
-                                        ack = self.dic_ack.pop(client_address)
-                                        ack = int(ack.decode())
-                                        if ack == sequence_number:
-                                            sequence_number += 1
-                                            # print(data)
-                                            break
-                                except socket.timeout:
-                                    break
+                            # while True:
+                            #     try:
+                            #         if client_address in self.dic_ack:
+                            #             ack = self.dic_ack.pop(client_address)
+                            #             print(ack, "\n")
+                            #             if int(ack) == sequence_number:
+                            #                 sequence_number += 1
+                            #                 print(data, "\n")
+                            #                 break
+                            #     except socket.timeout:
+                            #         break
+                            
+                            if client_address in self.dic_ack:
+                                ack = self.dic_ack.pop(client_address)
+                                if ack == sequence_number:
+                                    sequence_number += 1
+                                    print(data, "\n")
+                                    break      
                         except socket.timeout:
                             cnt = cnt + 1
                             if cnt == self.MAX_TRIES:
