@@ -3,8 +3,10 @@ import socket
 import threading
 import hashlib
 import os
+import struct
 
-PACKET_SIZE = 1024 * 1024
+PACKET_SIZE = 1024 + 1024
+DATA_SIZE = 1024
 MAX_PACKET_SIZE = 65507
 TIMEOUT = 1
 
@@ -15,11 +17,12 @@ class FileServer:
         self.port = port
         self.file_path = file_path
         self.file_size = os.path.getsize(file_path)
-        self.chunk_size = self.file_size // 4
+        self.chunk_num = 4
+        self.chunk_size = self.file_size // int(self.chunk_num)
         self.TIMEOUT = 1  # Timeout 1 giây
         self.lock = threading.Lock()
         dir_path = r"UDP\test_file"
-        self.MAX_TRIES = 10
+        self.MAX_TRIES = 1000
         self.file_list = [
             f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
             for f in os.listdir(dir_path)
@@ -45,13 +48,6 @@ class FileServer:
     def calculate_checksum(self, data):
         return hashlib.md5(data).hexdigest()
     
-    # def packaging(self, data, sequence_number):
-    #     # Tính checksum
-    #     checksum = self.calculate_checksum(data)
-    #     # Thêm các trường thông tin vào message --> packet
-    #     packet = f"{sequence_number}|{checksum}|{data}"
-    #     return packet
-    
     def packaging(self, data, sequence_number):
         # Tính checksum
         checksum = self.calculate_checksum(data).encode()
@@ -70,18 +66,17 @@ class FileServer:
             file_size = os.path.getsize(file_name)
             start = chunk_id * (self.chunk_size)  # Bắt đầu chunk
             end = start + (self.chunk_size)      # Kết thúc chunk
-            if chunk_id == self.chunk_size - 1:  # Chunk cuối có thể chứa phần dư
+            if chunk_id == self.chunk_num - 1:  # Chunk cuối có thể chứa phần dư
                 end = file_size
-                
-            print(start, end)
+            
             with open(file_name, "rb") as f:
                 f.seek(start)
                 while start < end:
-                    data = f.read(min(PACKET_SIZE, end - start))
+                    data = f.read(min(DATA_SIZE, end - start))
                     
                     if not data:
                         break
-                    # biến đếm số lần gửi lại (tối đa 10 lần)
+                    # biến đếm số lần gửi lại (tối đa 1000 lần)
                     cnt = 1
                     while True:
                         # đóng gói thành gói tin
@@ -119,7 +114,7 @@ class FileServer:
                                 ack = self.dic_ack.pop(client_address)
                                 if ack == sequence_number:
                                     sequence_number += 1
-                                    print(data, "\n")
+                                    # print(data, "\n")
                                     break      
                         except socket.timeout:
                             cnt = cnt + 1
@@ -146,7 +141,7 @@ class FileServer:
         # chạy server
         try:
             threads = []
-            for chunk_id in range(4):
+            for chunk_id in range(self.chunk_num):
                 thread = threading.Thread(
                     target=self.send_chunk, args=(self.file_path, chunk_id)
                 )
@@ -192,6 +187,6 @@ class FileServer:
                 
 
 if __name__ == "__main__":
-    server = FileServer("127.0.0.1", 61504, r"UDP\test_file\input.txt")
+    server = FileServer("127.0.0.1", 61504, r"UDP\test_file\input_2.txt")
     server.start_server()
     server.server_socket.close()
