@@ -31,9 +31,12 @@ class FileServer:
         self.progress = 0
         self.dic_ack = {}
         # khởi tạo server socket
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.settimeout(self.TIMEOUT)
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.settimeout(self.TIMEOUT)
+        except Exception as e:
+            print(f"Error: {e}")
 
     def check_exist_file(self, filename):
         for f in self.file_list:
@@ -82,10 +85,6 @@ class FileServer:
                         # đóng gói thành gói tin
                         packet = self.packaging(data, sequence_number)
                         # gửi đi
-                        # self.server_socket.sendto(
-                        #     packet.encode(), client_address
-                        # )
-                        
                         self.server_socket.sendto(packet, client_address)
                         # chờ nhận ack
                         try:
@@ -114,7 +113,6 @@ class FileServer:
                                 ack = self.dic_ack.pop(client_address)
                                 if ack == sequence_number:
                                     sequence_number += 1
-                                    # print(data, "\n")
                                     break      
                         except socket.timeout:
                             cnt = cnt + 1
@@ -124,12 +122,6 @@ class FileServer:
                     start += len(data)
         except Exception as e:
             print(f"Error sending chunk {chunk_id}: {e}")
-
-    def update_progress(self, sent_bytes):
-        with self.lock:
-            self.progress += sent_bytes
-            percent = (self.progress / self.file_size) * 100
-            print(f"Progress: {percent:.2f}%", end="\r")
              
     def start_server(self):
         # Chờ PING_MSG từ client 

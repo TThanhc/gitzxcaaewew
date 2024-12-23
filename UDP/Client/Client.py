@@ -46,7 +46,8 @@ class FileClient:
                 
                 for file in new_files:
                     if file == "": continue
-                    self.need_file.put(file)
+                    if file in self.list_file:  
+                        self.need_file.put(file)
                         
                 f.close()
                 time.sleep(5)
@@ -67,7 +68,6 @@ class FileClient:
 
                     if "not exist" not in server_response:
                         self.rcv_file(filename)
-
         except Exception as e:
             print(f"Error: {e}")
             
@@ -80,7 +80,7 @@ class FileClient:
                 client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65535)  # Tăng bộ đệm nhận lên 64KB
                 client_sock.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
-                self.send_message(client_sock)
+                self.send_message(client_sock, "23120088")
                 # tải chunk
                 ack = 0
                 received_bytes = 0
@@ -122,16 +122,6 @@ class FileClient:
         except Exception as e:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
-    def update_progress(chunks_progress, file_name):
-        # In 4 dòng cố định ban đầu
-        for i in range(len(chunks_progress)):
-            print(f"Downloading File", file_name, " part {i + 1} ....  0%")
-        while any(progress < 100 for progress in chunks_progress):
-            for i, progress in enumerate(chunks_progress):
-                # Di chuyển con trỏ về đầu dòng và cập nhật phần trăm
-                print(f"\033[{i + 1}FDownloading File5.zip part {i + 1} ....  {progress}%", end='\r')
-            time.sleep(0.1)
-
     def merge_chunks(self):
         with open(self.output_file, "wb") as f:
             for chunk in self.chunks_data:
@@ -144,33 +134,33 @@ class FileClient:
 
     def start_client(self):
         # tin nhắn khởi tạo
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.settimeout(self.TIMEOUT)
-        # tin nhắn khởi tạo socket
-        self.send_message(client_socket)
-        # nhận danh sách file
-        self.recv_message(client_socket)
-        
-        # chạy client
-        threads = []
-        for chunk_id in range(self.num_chunk):
-            thread = threading.Thread(target=self.recv_chunk, args=(chunk_id,))
-            if thread is not None:
-                threads.append(thread)
-                thread.start()
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+                client_socket.settimeout(self.TIMEOUT)
+                # tin nhắn khởi tạo socket
+                self.send_message(client_socket, "23120088")
+                # nhận danh sách file
+                self.recv_message(client_socket)
+                
+                # chạy client
+                threads = []
+                for chunk_id in range(self.num_chunk):
+                    thread = threading.Thread(target=self.recv_chunk, args=(chunk_id,))
+                    if thread is not None:
+                        threads.append(thread)
+                        thread.start()
 
-        for thread in threads:
-            if thread is not None:
-                thread.join()
+                for thread in threads:
+                    if thread is not None:
+                        thread.join()
 
-        self.merge_chunks()
-        client_socket.close()
+                self.merge_chunks()
+        except Exception as e:
+            print(f"Error: {e}")
         
-    def send_message(self, client_socket : socket):
+    def send_message(self, client_socket : socket, message):
         cnt = 1
         while True:
-            # PING_MSG = "23120088"
-            message = "23120088"
             client_socket.sendto(message.encode(), server_address)
             try:
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
@@ -190,8 +180,8 @@ class FileClient:
                 message, _ = client_socket.recvfrom(PACKET_SIZE)
                 response = "OK"
                 client_socket.sendto(response.encode(), server_address)
-                self.list_file = message
-                print(message.decode())
+                self.list_file = message.decode()
+                print(self.list_file)
                 break
             except socket.timeout:
                 cnt = cnt + 1
