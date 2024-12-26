@@ -4,6 +4,8 @@ import threading
 import hashlib
 import os
 import time
+from threading import Thread
+import sys
 
 PACKET_SIZE = 1024 + 1024
 DATA_SIZE = 1024
@@ -26,8 +28,10 @@ class FileServer:
             for f in os.listdir(dir_path)
             if os.path.isfile(os.path.join(dir_path, f))
         ]
-        self.progress = 0
+        self.chunk_progress = [0.0] * self.chunk_num
+        self.done_chunk = [False] * self.chunk_num
         self.dic_ack = {}
+        self.dict_ping = {}
         # khởi tạo server socket
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
@@ -47,21 +51,38 @@ class FileServer:
         self.send_message(file_list_str, client_address)
 
     def calculate_checksum(self, data):
-        return hashlib.md5(data).hexdigest()
+        return hashlib.sha256(data).hexdigest()
     
-    def packaging(self, data, sequence_number):
+    def packaging(self, data, sequence_number, chunk_id):
         # Tính checksum
         checksum = self.calculate_checksum(data).encode()
+        chunk_id = chunk_id.encode()
         seq_s = str(sequence_number).encode()
         # Thêm các trường thông tin vào message --> packet
-        packet = b"|".join([seq_s, checksum, data])
+        packet = b"|".join([seq_s, checksum, chunk_id, data])
         return packet
+
+    def send_progress(self, file_name, client_address):
+        try:
+            while any(done == False for done in self.done_chunk):
+                progress_msg = "\n".join([f"Server: Downloading {self.file_name} part {i + 1}: {self.chunk_progress[i]:.2f}%" for i in range(self.chunk_num)])
+                self.send_message(progress_msg, client_address)
+                time.sleep(0.5)
+                print(progress_msg)
+                sys.stdout.write("\033[4A\033[0G\033[J")
+
+            progress_msg = "\n".join([f"Server: Downloading {self.filename} part {i + 1} successfully" for i in range(self.chunk_num)])
+            print(progress_msg)
+            
+            self.send_message(progress_msg, client_address)
+        except:
+            print("Error in send progress")
 
     def send_chunk(self, file_name, file_size, chunk_id):
         # Nhận tin nhắn khởi tạo kết nối
         client_address = self.recv_ping_message()
         if client_address is not None:
-            print("Received PING_MSG from client ", client_address, "\n")
+            print(f"{chunk_id}Received PING_MSG from client ", client_address, "\n")
         # gửi bytes
         sequence_number = 0
         try:
@@ -82,7 +103,7 @@ class FileServer:
                     cnt = 1
                     while True:
                         # đóng gói thành gói tin
-                        packet = self.packaging(data, sequence_number)
+                        packet = self.packaging(data, sequence_number, str(chunk_id))
                         # gửi đi
                         self.server_socket.sendto(packet, client_address)
                         # chờ nhận ack
@@ -95,19 +116,7 @@ class FileServer:
                                 break
                             # Nhận ack không phải của mình lưu lại
                             self.dic_ack[address] = ack
-                            # chờ nếu có địa chỉ của mình trong dic_ack
-                            # while True:
-                            #     try:
-                            #         if client_address in self.dic_ack:
-                            #             ack = self.dic_ack.pop(client_address)
-                            #             print(ack, "\n")
-                            #             if int(ack) == sequence_number:
-                            #                 sequence_number += 1
-                            #                 print(data, "\n")
-                            #                 break
-                            #     except socket.timeout:
-                            #         break
-                            
+    
                             if client_address in self.dic_ack:
                                 ack = self.dic_ack.pop(client_address)
                                 if ack == sequence_number:
@@ -115,12 +124,13 @@ class FileServer:
                                     break      
                         except socket.timeout:
                             cnt = cnt + 1
-                            if cnt == self.MAX_TRIES:
+                            if cnt >= self.MAX_TRIES:
                                 print("ERROR send data!!\n")
                                 break
-                    start += len(data)
-        except Exception as e:
-            print(f"Error sending chunk {chunk_id}: {e}")
+                    start += len(data)            
+        except ConnectionResetError as e:
+            return
+            # print(f"Error sending chunk {chunk_id}: {e}")
              
     def start_server(self):
         # Chờ PING_MSG từ client 
@@ -155,8 +165,11 @@ class FileServer:
                         for thread in threads:
                             if thread is not None:
                                 thread.join()
+
                         # Gửi xong file
-                        print(file_name, "has been sent successfully\n")
+                        message = f"{file_name} has been sent successfully"
+                        # self.send_message(message, client_address)
+                        print(message)
                     except KeyboardInterrupt:
                         print("\nShutting down server...")
                 else:
@@ -179,7 +192,7 @@ class FileServer:
                 return client_address
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == self.MAX_TRIES:
+                if cnt >= self.MAX_TRIES:
                     print("Can not receive PING_MSG from client\n")
                     break
 
@@ -213,7 +226,7 @@ class FileServer:
                 self.server_socket.sendto(response.encode(), client_address)
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == self.MAX_TRIES:
+                if cnt >= self.MAX_TRIES:
                     print("Can not receive message from client\n")
                     break
 
@@ -231,12 +244,12 @@ class FileServer:
                     break
             except socket.timeout:
                 cnt = cnt + 1
-                if cnt == self.MAX_TRIES:
+                if cnt >= self.MAX_TRIES:
                     print("Can't send message to client\n")
                     break
                 
 
 if __name__ == "__main__":
-    server = FileServer("10.131.3.50", 61504)
+    server = FileServer("127.0.0.1", 61504)
     server.start_server()
     server.server_socket.close()

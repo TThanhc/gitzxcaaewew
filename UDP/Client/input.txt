@@ -1,4 +1,1 @@
-input_2.txt
-input.txt
-okok.txt
-okok.txt
+100MB.bin
