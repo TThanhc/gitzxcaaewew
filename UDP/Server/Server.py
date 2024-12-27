@@ -107,10 +107,13 @@ class FileServer:
                             if cnt >= self.MAX_TRIES:
                                 print("ERROR send data!!\n")
                                 break
+                        except ConnectionResetError:
+                            return
+                        except KeyboardInterrupt:
+                            print("\nShutting down server...")
                     start += len(data)            
         except ConnectionResetError as e:
             return
-            # print(f"Error sending chunk {chunk_id}: {e}")
              
     def start_server(self):
         # Chờ PING_MSG từ client 

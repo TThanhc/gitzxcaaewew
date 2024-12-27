@@ -212,8 +212,8 @@ class FileClient:
                     except KeyboardInterrupt:
                         print("\nShutting down Client...")
                         break
-        except Exception as e:
-            print(f"Error: {e}")
+        except (ConnectionResetError, BrokenPipeError):
+            print(f"Client disconnected.")
         
     def send_ping_message(self, client_socket : socket, message):
         cnt = 1
