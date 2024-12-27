@@ -1,61 +1,45 @@
-import sys
-import time
+import socket
+# import time
 import threading
+import hashlib
+import os
+import time
+from threading import Thread
+import sys
+def get_file_size_from_string(file_list_str, file_name):
+    # Tách chuỗi thành danh sách các dòng
+    lines = file_list_str.splitlines()
+    
+    for line in lines:
+        # Bỏ qua dòng tiêu đề "List of files:"
+        if line.startswith("List of files:"):
+            continue
+        
+        # Tách tên file và kích thước
+        if " - " in line:
+            name, size = line.split(" - ")
+            if name.strip() == file_name:
+                # Loại bỏ đơn vị MB và chuyển thành số
+                size_in_mb = float(size.replace(" MB", "").strip())
+                return size_in_mb
+    
+    return None  # Không tìm thấy file
 
-def display_progress_fixed(chunk_progress, num_chunks):
-    """
-    Hiển thị tiến độ tải của các chunk trên 4 dòng cố định và cập nhật động.
 
-    Args:
-        chunk_progress (list): Danh sách phần trăm tiến độ của từng chunk.
-        num_chunks (int): Số lượng chunk của file.
-    """
-    # In các dòng khởi tạo
-    for chunk_id in range(num_chunks):
-        sys.stdout.write(f"Chunk {chunk_id + 1}: {chunk_progress[chunk_id]}%\n")
-    sys.stdout.flush()
+dir_path = r"UDP\test_file"
+file_list = [
+            f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
+            for f in os.listdir(dir_path)
+            if os.path.isfile(os.path.join(dir_path, f))
+        ]
 
-    while not all(progress == 100 for progress in chunk_progress):
-        # Di chuyển con trỏ lên `num_chunks` dòng
-        sys.stdout.write(f"\033[{num_chunks}A")
-        sys.stdout.flush()
+file_list_str = "List of files:\n" + "\n".join(file_list)
+print(file_list_str)
 
-        # Cập nhật phần trăm của từng chunk
-        for chunk_id in range(num_chunks):
-            sys.stdout.write(f"Chunk {chunk_id + 1}: {chunk_progress[chunk_id]}%\n")
-        sys.stdout.flush()
-
-        time.sleep(0.1)  # Chờ một chút trước lần cập nhật tiếp theo
-
-    # In dòng hoàn thành
-    sys.stdout.write(f"\033[{num_chunks}A")
-    for chunk_id in range(num_chunks):
-        sys.stdout.write(f"Chunk {chunk_id + 1}: 100%\n")
-    sys.stdout.write("All chunks downloaded successfully!\n")
-    sys.stdout.flush()
-
-def simulate_chunk_download(chunk_id, chunk_progress):
-    """
-    Mô phỏng quá trình tải một chunk.
-    """
-    for i in range(101):
-        time.sleep(0.05)  # Mô phỏng thời gian tải
-        chunk_progress[chunk_id] = i
-
-# Số lượng chunk tải song song
-num_chunks = 4
-chunk_progress = [0] * num_chunks
-
-# Tạo và khởi chạy các thread mô phỏng tải
-threads = []
-for chunk_id in range(num_chunks):
-    thread = threading.Thread(target=simulate_chunk_download, args=(chunk_id, chunk_progress))
-    threads.append(thread)
-    thread.start()
-
-# Hiển thị tiến độ tải
-display_progress_fixed(chunk_progress, num_chunks)
-
-# Chờ các thread hoàn tất
-for thread in threads:
-    thread.join()
+# Ví dụ sử dụng
+file_name = "100MB.bin"
+size = get_file_size_from_string(file_list_str, file_name)
+if size is not None:
+    print(f"The size of '{file_name}' is {size} MB.")
+else:
+    print(f"File '{file_name}' not found.")

@@ -55,37 +55,14 @@ class FileClient:
     def display_progress(self):
         try:
             while any(done == False for done in self.done_chunk):
-                progress_msg = "\n".join([f"Downloading {self.file_name} part {i + 1}: {self.chunk_progress[i]:.2f}%" for i in range(self.num_chunk)])
+                progress_msg = "\n".join([f"Downloading {self.file_name} part {chunk_id + 1}: {self.chunk_progress[chunk_id]:.2f}%" for chunk_id in range(self.num_chunk)])
                 print("\033[1;31;40m" + progress_msg + "\033[0m")
+                sys.stdout.flush()
                 # move cursor up
+                time.sleep(0.1)
                 sys.stdout.write(f"\033[{self.num_chunk}A\033[0G\033[J")
         except Exception as e:
             print("ERROR display progress: ", {e})
-
-    def display_progress_fixed(self):
-        # In các dòng khởi tạo
-        for chunk_id in range(self.num_chunk):
-            sys.stdout.write(f"Chunk {chunk_id + 1}: {self.chunk_progress[chunk_id]}%\n")
-    #sys.stdout.flush()
-
-        while not all(done == True for done in self.done_chunk):
-            # Di chuyển con trỏ lên `num_chunk` dòng
-            sys.stdout.write(f"\033[{self.num_chunk}A")
-            sys.stdout.flush()
-
-            # Cập nhật phần trăm của từng chunk
-            for chunk_id in range(self.num_chunk):
-                sys.stdout.write(f"Chunk {chunk_id + 1}: {self.chunk_progress[chunk_id]}%\n")
-            # sys.stdout.flush()
-
-            time.sleep(0.1)  # Chờ một chút trước lần cập nhật tiếp theo
-
-        # In dòng hoàn thành
-        sys.stdout.write(f"\033[{self.num_chunk}A")
-        for chunk_id in range(self.num_chunk):
-            sys.stdout.write(f"Chunk {chunk_id + 1}: 100%\n")
-        sys.stdout.write("All chunks downloaded successfully!\n")
-        sys.stdout.flush()
 
     def get_file_name(self):
         if not self.need_file.empty():
@@ -154,7 +131,8 @@ class FileClient:
                                     # số bytes đã nhận
                                     received_bytes += len(data)
                                     # update progress
-                                    self.chunk_progress[chunk_id] = received_bytes // total_chunk * 100
+                                    with self.lock:
+                                        self.chunk_progress[chunk_id] = (received_bytes / total_chunk) * 100
                                     # gửi ack lại
                                     response = f"{seq_s}"
                                     client_sock.sendto(response.encode(), server_address)
@@ -198,7 +176,6 @@ class FileClient:
                 self.send_ping_message(client_socket, "23120088")
                 # nhận danh sách file
                 self.list_file = self.recv_message(client_socket)
-                print(self.list_file)
                 while True:
                     try:
                         # gửi file cần tải
@@ -220,7 +197,7 @@ class FileClient:
                                         threads.append(thread)
                                         thread.start()
                                 
-                                self.display_progress_fixed()
+                                self.display_progress()
 
                                 for thread in threads:
                                     if thread is not None:
@@ -228,6 +205,8 @@ class FileClient:
                                         
                                 self.merge_chunks()
                                 self.chunks_data = [None] * self.num_chunk
+                                self.chunk_progress = [0.0] * self.num_chunk
+                                self.done_chunk = [False] * self.num_chunk
                             else:
                                 print(self.file_name, "does not exist in file list server!!\n")
                     except KeyboardInterrupt:
