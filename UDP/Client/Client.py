@@ -1,11 +1,12 @@
 from queue import Queue
 import socket
 import hashlib
-#import os
+import os
 from threading import Thread
 import threading
 import time
 import sys
+import signal
 
 PACKET_SIZE = 1024 + 1024
 # Cấu hình UDP socket
@@ -176,6 +177,7 @@ class FileClient:
                 self.send_ping_message(client_socket, "23120088")
                 # nhận danh sách file
                 self.list_file = self.recv_message(client_socket)
+                print(self.list_file)
                 while True:
                     try:
                         # gửi file cần tải
@@ -186,7 +188,6 @@ class FileClient:
                             response = self.recv_message(client_socket)
                             if response != "NOT":
                                 self.file_size = int(response)
-                                print(self.file_size)
                                 self.chunk_size = self.file_size // self.num_chunk                                
                                 # chạy client
                                 threads = []
@@ -210,10 +211,15 @@ class FileClient:
                             else:
                                 print(self.file_name, "does not exist in file list server!!\n")
                     except KeyboardInterrupt:
-                        print("\nShutting down Client...")
+                        print("\nShutting down Client")
+                        os.kill(os.getppid(), signal.SIGINT)
                         break
-        except (ConnectionResetError, BrokenPipeError):
-            print(f"Client disconnected.")
+        except ConnectionResetError:
+            print(f"Server disconnected.")
+        except KeyboardInterrupt:
+            os.kill(os.getppid(), signal.SIGINT)
+            print("\nShutting down Client...")
+            return
         
     def send_ping_message(self, client_socket : socket, message):
         cnt = 1
@@ -228,6 +234,9 @@ class FileClient:
                 if cnt >= self.MAX_TRIES:
                     print("Can not send PING_MSG to server\n")
                     break
+            except ConnectionResetError:
+                print(f"Server {server_address} is not alive.")
+                break
 
     def send_message(self, client_socket : socket, message):
         cnt = 1
@@ -235,8 +244,8 @@ class FileClient:
         checksum = self.calculate_checksum(message).encode()
         packet = b"|".join([checksum, message]) 
         while True:
-            client_socket.sendto(packet, server_address)
             try:
+                client_socket.sendto(packet, server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
                     break
@@ -245,6 +254,9 @@ class FileClient:
                 if cnt >= self.MAX_TRIES:
                     print("Can't send message to server\n")
                     break
+            except ConnectionResetError:
+                print(f"Server {server_address} is not alive.")
+                break
     
     def recv_message(self, client_socket : socket):
         cnt = 1
@@ -264,6 +276,9 @@ class FileClient:
                 if cnt >= self.MAX_TRIES:
                     print("Can not receive message from server\n")
                     break
+            except ConnectionResetError:
+                print(f"Server {server_address} is not alive.")
+                break
         
 
 if __name__ == "__main__":
