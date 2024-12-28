@@ -12,7 +12,7 @@ class FileServer:
         self.host = host
         self.port = port
         self.file_path = "test_file\\"
-        self.chunk_num = 4
+        self.chunk_num = 1
         self.TIMEOUT = 0.2  # Timeout 1 giây
         self.lock = threading.Lock()
         dir_path = r"test_file"
@@ -164,7 +164,6 @@ class FileServer:
 
                             # Gửi xong file
                             message = f"{file_name} has been sent successfully"
-                            # self.send_message(message, client_address)
                             print(message)
                         except KeyboardInterrupt:
                             return

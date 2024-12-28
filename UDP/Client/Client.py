@@ -14,7 +14,7 @@ server_address = ('127.0.0.1', 61504)
 
 class FileClient:
     def __init__(self):
-        self.num_chunk = 4
+        self.num_chunk = 1
         self.chunks_data = [None] * self.num_chunk
         self.TIMEOUT = 0.2  # Timeout 1 giây
         self.lock = threading.Lock()
@@ -61,12 +61,6 @@ class FileClient:
                     break
         except Exception as e:
             print(f"Error in send_request: {e}")
-        # except KeyboardInterrupt:
-        #     self.stop()
-        # except ConnectionResetError:
-        #     print(f"Server {server_address} is not alive.")
-        #     self.stop
-
 
     def display_progress(self):
         try:
@@ -105,8 +99,9 @@ class FileClient:
                 client_sock.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
                 PING_MSG = str(chunk_id)
-                self.send_ping_message(client_sock, PING_MSG)
-
+                ok = self.send_ping_message(client_sock, PING_MSG)
+                if not ok:
+                    return
                 start = chunk_id * (self.file_size // int(self.num_chunk)) # Bắt đầu chunk    
                 # Kết thúc chunk
                 if chunk_id == self.num_chunk - 1:   # Chunk cuối có thể chứa phần dư
@@ -278,7 +273,7 @@ class FileClient:
                 client_socket.sendto(packet, server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    break
+                    return True
             except socket.timeout:
                 cnt = cnt + 1
                 if cnt >= self.MAX_TRIES:
@@ -310,9 +305,9 @@ class FileClient:
                     break
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
-                break
+                return None
             except KeyboardInterrupt:
-                return
+                return None
 
 if __name__ == "__main__":
     client = FileClient()
