@@ -2,17 +2,10 @@ import socket
 import threading
 import hashlib
 import os
-import time
-import signal
 
-PACKET_SIZE = 1024 + 1024
-DATA_SIZE = 1024
+PACKET_SIZE = 1500
+DATA_SIZE = 1400
 TIMEOUT = 1
-
-def handle_sigint(signum, frame):
-    print("\nShutting down server...")
-    exit(0)
-signal.signal(signal.SIGINT, handle_sigint)
 
 class FileServer:
     def __init__(self, host, port):
@@ -119,12 +112,12 @@ class FileServer:
                             if start + len(data) >= end:
                                 return
                         except KeyboardInterrupt:
-                            print("\nShutting down server...")
+                            return
                     start += len(data)            
         except ConnectionResetError:
             return
         except KeyboardInterrupt:
-            print("\nShutting down server...")
+            return
 
     def start_server(self):
         # Chờ PING_MSG từ client 
@@ -134,7 +127,6 @@ class FileServer:
             if client_address is not None:
                 print(f"Received PING_MSG from client ", client_address, "\n")
         except KeyboardInterrupt:
-            print("\nShutting down server...")
             return
         
         if client_address is not None:
@@ -145,7 +137,7 @@ class FileServer:
             while True:
                 try:
                     file_name = self.recv_message()
-                    if file_name == None:
+                    if file_name == None or file_name == "EXIT":
                         break
                     print("_-_-_-_-_Client: I want to download this file - ", file_name)
                     if self.check_exist_file(file_name):
@@ -175,14 +167,12 @@ class FileServer:
                             # self.send_message(message, client_address)
                             print(message)
                         except KeyboardInterrupt:
-                            print("\nShutting down server...")
                             return
                     else:
                         print("_-_-_-_-Server: I don't have this file - ", file_name)
                         message = "NOT"
                         self.send_message(message, client_address)
                 except KeyboardInterrupt:
-                    print("\nShutting down server...")
                     return
                 except ConnectionResetError:
                     print("Client has been disconnected")
@@ -207,10 +197,7 @@ class FileServer:
                 if cnt >= self.MAX_TRIES:
                     print("Can not receive PING_MSG from client\n")
                     return None
-            except ConnectionResetError:
-                return None
             except KeyboardInterrupt:
-                print("\nShutting down server...")
                 return None
     def recv_message(self):
         cnt = 1
@@ -231,8 +218,6 @@ class FileServer:
                 if cnt >= self.MAX_TRIES:
                     print("Can not receive message from client\n")
                     return None
-            except ConnectionResetError:
-                return None
             except KeyboardInterrupt:
                 print("\nShutting down server...")
                 return None
@@ -254,14 +239,12 @@ class FileServer:
                 if cnt >= self.MAX_TRIES:
                     print("Can't send message to client\n")
                     break
-            except ConnectionResetError:
-                return
             except KeyboardInterrupt:
                 print("\nShutting down server...")
                 return 
                 
-
 if __name__ == "__main__":
     server = FileServer("127.0.0.1", 61504)
     server.start_server()
     server.server_socket.close()
+    print("\nShutting down server...")

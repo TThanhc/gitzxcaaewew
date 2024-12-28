@@ -1,12 +1,11 @@
 from queue import Queue
 import socket
 import hashlib
-import os
 from threading import Thread
 import threading
 import time
 import sys
-import signal
+import os
 
 PACKET_SIZE = 1024 + 1024
 # Cấu hình UDP socket
@@ -33,25 +32,38 @@ class FileClient:
 
         Thread(target = self.read_input_file).start()
 
+    def stop(self):
+        print("\nShutting down Client...")
+        os._exit(0)
+
     def read_input_file(self):
         file_input = "UDP\Client\input.txt"
         start = 0
 
         try:
             while True:
-                with open(file_input, "r") as f:
-                    f.seek(start)
-                    new_files = [line.strip() for line in f.readlines()]
-                    start = f.tell()
-                
-                for file in new_files:
-                    if file == "": continue
-                    if file in new_files:  
-                        self.need_file.put(file)
-                f.close()
-                time.sleep(5)
+                try:
+                    with open(file_input, "r") as f:
+                        f.seek(start)
+                        new_files = [line.strip() for line in f.readlines()]
+                        start = f.tell()
+                    
+                    for file in new_files:
+                        if file == "": continue
+                        if file in new_files:  
+                            self.need_file.put(file)
+                    f.close()
+                    time.sleep(5)
+                except KeyboardInterrupt:
+                    print("\nShutting down Client...") 
+                    return
         except Exception as e:
             print(f"Error in send_request: {e}")
+        except KeyboardInterrupt:
+            self.stop()
+        finally:
+            self.stop()
+
 
     def display_progress(self):
         try:
@@ -147,13 +159,24 @@ class FileClient:
                         # gửi lại ack trc đó
                         response = f"{ack - 1}"
                         client_sock.sendto(response.encode(), server_address)
+                    except KeyboardInterrupt:
+                        print("\nShutting down Client...")
+                        client_sock.close()
+                        break
                     except socket.timeout:
                         cnt = cnt + 1
                         if cnt >= self.MAX_TRIES:
                             print("Error receive data\n")
                             break
+                    except ConnectionResetError:
+                        print(f"Server disconnected.")
+                        client_sock.close()
+                        return
                 self.done_chunk[chunk_id] = True
                 self.chunks_data[chunk_id] = chunk_data
+        except KeyboardInterrupt:
+            print("\nShutting down Client...")
+            return
         except Exception as e:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
@@ -174,58 +197,60 @@ class FileClient:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
                 client_socket.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
-                self.send_ping_message(client_socket, "23120088")
-                # nhận danh sách file
-                self.list_file = self.recv_message(client_socket)
-                print(self.list_file)
-                while True:
-                    try:
-                        # gửi file cần tải
-                        self.file_name = self.get_file_name()
-                        if self.file_name != None:
-                            self.send_message(client_socket, self.file_name)
-                            # Nhận file_size hay NOT
-                            response = self.recv_message(client_socket)
-                            if response != "NOT":
-                                self.file_size = int(response)
-                                self.chunk_size = self.file_size // self.num_chunk                                
-                                # chạy client
-                                threads = []
-                                
-                                for chunk_id in range(self.num_chunk):
-                                    thread = threading.Thread(target=self.recv_chunk, args=(chunk_id,))
-                                    if thread is not None:
-                                        threads.append(thread)
-                                        thread.start()
-                                
-                                self.display_progress()
+                try:
+                    self.send_ping_message(client_socket, "23120088")
+                    # nhận danh sách file
+                    self.list_file = self.recv_message(client_socket)
+                    print(self.list_file)
+                    while True:
+                        try:
+                            # gửi file cần tải
+                            self.file_name = self.get_file_name()
+                            if self.file_name != None:
+                                self.send_message(client_socket, self.file_name)
+                                # Nhận file_size hay NOT
+                                response = self.recv_message(client_socket)
+                                if response != "NOT":
+                                    self.file_size = int(response)
+                                    self.chunk_size = self.file_size // self.num_chunk                                
+                                    # chạy client
+                                    threads = []
+                                    
+                                    for chunk_id in range(self.num_chunk):
+                                        thread = threading.Thread(target=self.recv_chunk, args=(chunk_id,))
+                                        if thread is not None:
+                                            threads.append(thread)
+                                            thread.start()
+                                    
+                                    self.display_progress()
 
-                                for thread in threads:
-                                    if thread is not None:
-                                        thread.join()
-                                        
-                                self.merge_chunks()
-                                self.chunks_data = [None] * self.num_chunk
-                                self.chunk_progress = [0.0] * self.num_chunk
-                                self.done_chunk = [False] * self.num_chunk
-                            else:
-                                print(self.file_name, "does not exist in file list server!!\n")
-                    except KeyboardInterrupt:
-                        print("\nShutting down Client")
-                        os.kill(os.getppid(), signal.SIGINT)
-                        break
+                                    for thread in threads:
+                                        if thread is not None:
+                                            thread.join()
+                                            
+                                    self.merge_chunks()
+                                    self.chunks_data = [None] * self.num_chunk
+                                    self.chunk_progress = [0.0] * self.num_chunk
+                                    self.done_chunk = [False] * self.num_chunk
+                                else:
+                                    print(self.file_name, "does not exist in file list server!!\n")
+                        except KeyboardInterrupt:
+                            FIN = "EXIT"
+                            self.send_message(client_socket, FIN)
+                            break
+                        except ConnectionResetError:
+                            print(f"Server disconnected.")
+                except KeyboardInterrupt:
+                    print("\nShutting down Client...")
+                    return
         except ConnectionResetError:
             print(f"Server disconnected.")
-        except KeyboardInterrupt:
-            os.kill(os.getppid(), signal.SIGINT)
-            print("\nShutting down Client...")
-            return
         
     def send_ping_message(self, client_socket : socket, message):
         cnt = 1
         while True:
-            client_socket.sendto(message.encode(), server_address)
             try:
+                client_socket.sendto(message.encode(), server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
                     break
@@ -237,6 +262,8 @@ class FileClient:
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
                 break
+            except KeyboardInterrupt:
+                return
 
     def send_message(self, client_socket : socket, message):
         cnt = 1
@@ -257,6 +284,8 @@ class FileClient:
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
                 break
+            except KeyboardInterrupt:
+                return
     
     def recv_message(self, client_socket : socket):
         cnt = 1
@@ -279,9 +308,12 @@ class FileClient:
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
                 break
+            except KeyboardInterrupt:
+                return
         
 
 if __name__ == "__main__":
     client = FileClient()
     client.start_client()
- 
+    client.stop()
+    sys.exit(0)
