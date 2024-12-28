@@ -55,14 +55,17 @@ class FileClient:
                     f.close()
                     time.sleep(5)
                 except KeyboardInterrupt:
-                    print("\nShutting down Client...") 
                     return
+                except ConnectionResetError:
+                    print(f"Server {server_address} is not alive.")
+                    break
         except Exception as e:
             print(f"Error in send_request: {e}")
-        except KeyboardInterrupt:
-            self.stop()
-        finally:
-            self.stop()
+        # except KeyboardInterrupt:
+        #     self.stop()
+        # except ConnectionResetError:
+        #     print(f"Server {server_address} is not alive.")
+        #     self.stop
 
 
     def display_progress(self):
@@ -160,8 +163,6 @@ class FileClient:
                         response = f"{ack - 1}"
                         client_sock.sendto(response.encode(), server_address)
                     except KeyboardInterrupt:
-                        print("\nShutting down Client...")
-                        client_sock.close()
                         break
                     except socket.timeout:
                         cnt = cnt + 1
@@ -175,7 +176,6 @@ class FileClient:
                 self.done_chunk[chunk_id] = True
                 self.chunks_data[chunk_id] = chunk_data
         except KeyboardInterrupt:
-            print("\nShutting down Client...")
             return
         except Exception as e:
             print(f"Error downloading chunk {chunk_id}: {e}")
@@ -198,10 +198,13 @@ class FileClient:
                 client_socket.settimeout(self.TIMEOUT)
                 # tin nhắn khởi tạo socket
                 try:
-                    self.send_ping_message(client_socket, "23120088")
+                    fl = self.send_ping_message(client_socket, "23120088")
+                    if not fl:
+                        return
                     # nhận danh sách file
                     self.list_file = self.recv_message(client_socket)
-                    print(self.list_file)
+                    if self.list_file is not None:
+                        print(self.list_file)
                     while True:
                         try:
                             # gửi file cần tải
@@ -240,11 +243,11 @@ class FileClient:
                             break
                         except ConnectionResetError:
                             print(f"Server disconnected.")
+                            break
                 except KeyboardInterrupt:
-                    print("\nShutting down Client...")
                     return
         except ConnectionResetError:
-            print(f"Server disconnected.")
+            print(f"Server {server_address} is not alive.")
         
     def send_ping_message(self, client_socket : socket, message):
         cnt = 1
@@ -253,7 +256,7 @@ class FileClient:
                 client_socket.sendto(message.encode(), server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    break
+                    return True
             except socket.timeout:
                 cnt = cnt + 1
                 if cnt >= self.MAX_TRIES:
@@ -261,9 +264,9 @@ class FileClient:
                     break
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
-                break
+                return False
             except KeyboardInterrupt:
-                return
+                return False
 
     def send_message(self, client_socket : socket, message):
         cnt = 1
@@ -283,9 +286,9 @@ class FileClient:
                     break
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
-                break
+                return False
             except KeyboardInterrupt:
-                return
+                return False
     
     def recv_message(self, client_socket : socket):
         cnt = 1
@@ -310,7 +313,6 @@ class FileClient:
                 break
             except KeyboardInterrupt:
                 return
-        
 
 if __name__ == "__main__":
     client = FileClient()
