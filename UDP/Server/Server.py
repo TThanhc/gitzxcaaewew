@@ -12,7 +12,7 @@ class FileServer:
         self.host = host
         self.port = port
         self.file_path = "test_file\\"
-        self.chunk_num = 1
+        self.chunk_num = 4
         self.TIMEOUT = 0.2  # Timeout 1 giây
         self.lock = threading.Lock()
         dir_path = r"test_file"
@@ -243,7 +243,7 @@ class FileServer:
                 return 
                 
 if __name__ == "__main__":
-    server = FileServer("127.0.0.1", 61504)
+    server = FileServer("192.168.1.10", 61504)
     server.start_server()
     server.server_socket.close()
     print("\nShutting down server...")
