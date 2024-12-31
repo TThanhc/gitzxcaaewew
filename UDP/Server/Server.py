@@ -6,6 +6,8 @@ import os
 PACKET_SIZE = 1500
 DATA_SIZE = 1400
 TIMEOUT = 1
+HOST = "127.0.0.1"
+PORT = 61504
 
 class FileServer:
     def __init__(self, host, port):
@@ -13,10 +15,10 @@ class FileServer:
         self.port = port
         self.file_path = "test_file\\"
         self.chunk_num = 4
-        self.TIMEOUT = 0.2  # Timeout 1 giây
+        self.TIMEOUT = 0.2
         self.lock = threading.Lock()
         dir_path = r"test_file"
-        self.MAX_TRIES = 1000
+        self.MAX_TRIES = 100
         self.client = []    
         self.file_list = [
             f"{f} - {(os.path.getsize(os.path.join(dir_path, f)) / (1024 * 1024))} MB"
@@ -106,7 +108,6 @@ class FileServer:
                         except socket.timeout:
                             cnt = cnt + 1
                             if cnt >= self.MAX_TRIES:
-                                print("ERROR send data!!\n")
                                 break
                         except ConnectionResetError:
                             if start + len(data) >= end:
@@ -125,7 +126,7 @@ class FileServer:
         try:
             client_address = self.recv_ping_message()
             if client_address is not None:
-                print(f"Received PING_MSG from client ", client_address, "\n")
+                print(f"\n\033[1;32;40m[NOTIFICATION] Server has received PING_MSG from client with address: {str(client_address)}\n\033[0m")
         except KeyboardInterrupt:
             return
         
@@ -136,10 +137,12 @@ class FileServer:
             # Nhận tên file
             while True:
                 try:
-                    file_name = self.recv_message()
-                    if file_name == None or file_name == "EXIT":
+                    client_msg, address = self.recv_message()
+                    if "GET" in client_msg:
+                        file_name = client_msg[4:]
+                    if client_msg == "EXIT":
                         break
-                    print("_-_-_-_-_Client: I want to download this file - ", file_name)
+                    print("\033[1;31;40m" + "[FROM] " + str(address) + ": " + client_msg + "\033[0m")
                     if self.check_exist_file(file_name):
                         file_name = self.file_path + file_name
                         file_size = os.path.getsize(file_name)
@@ -147,7 +150,7 @@ class FileServer:
                         self.send_message(str(file_size), client_address)
 
                         # Gửi file
-                        print("Started to send file ", file_name, "!!!")
+                        print("Start downloading ", file_name, "!")
                         try:
                             threads = []
                             for chunk_id in range(self.chunk_num):
@@ -163,12 +166,13 @@ class FileServer:
                                     thread.join()
 
                             # Gửi xong file
-                            message = f"{file_name} has been sent successfully"
+                            message = f"Download {file_name} successfully"
                             print(message)
                         except KeyboardInterrupt:
                             return
                     else:
-                        print("_-_-_-_-Server: I don't have this file - ", file_name)
+                        msg = f"File {file_name} is not exist!"
+                        print(msg)
                         message = "NOT"
                         self.send_message(message, client_address)
                 except KeyboardInterrupt:
@@ -192,10 +196,11 @@ class FileServer:
                 self.server_socket.sendto(response.encode(), client_address)
                 return client_address
             except socket.timeout:
-                cnt = cnt + 1
-                if cnt >= self.MAX_TRIES:
-                    print("Can not receive PING_MSG from client\n")
-                    return None
+                # cnt = cnt + 1
+                # if cnt >= self.MAX_TRIES:
+                #     print("Can not receive PING_MSG from client\n")
+                #     return None
+                continue
             except KeyboardInterrupt:
                 return None
     def recv_message(self):
@@ -209,14 +214,15 @@ class FileServer:
                     if self.calculate_checksum(message) == checksum:
                         response = "OK"
                         self.server_socket.sendto(response.encode(), client_address)
-                        return message.decode()
+                        return message.decode(), client_address
                     response = "NOK"
                     self.server_socket.sendto(response.encode(), client_address)
             except socket.timeout:
-                cnt = cnt + 1
-                if cnt >= self.MAX_TRIES:
-                    print("Can not receive message from client\n")
-                    return None
+                # cnt = cnt + 1
+                # if cnt >= self.MAX_TRIES:
+                #     print("Can not receive message from client\n")
+                #     return None
+                continue
             except KeyboardInterrupt:
                 print("\nShutting down server...")
                 return None
@@ -243,7 +249,7 @@ class FileServer:
                 return 
                 
 if __name__ == "__main__":
-    server = FileServer("192.168.1.10", 61504)
+    server = FileServer(HOST, PORT)
     server.start_server()
     server.server_socket.close()
-    print("\nShutting down server...")
+    print("\n\033[1;32;40m[NOTIFICATION] Exited the server!\n\033[0m")

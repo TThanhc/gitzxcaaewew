@@ -9,31 +9,32 @@ import os
 
 PACKET_SIZE = 1024 + 1024
 # Cấu hình UDP socket
-server_address = ('127.0.0.1', 61504)
+HOST = input("Enter server's IP: ")
+PORT = input("Enter server's PORT: ")
+server_address = (HOST, int(PORT))
 
 
 class FileClient:
     def __init__(self):
-        self.num_chunk = 1
+        self.num_chunk = 4
         self.chunks_data = [None] * self.num_chunk
-        self.TIMEOUT = 0.2  # Timeout 1 giây
+        self.TIMEOUT = 0.2
         self.lock = threading.Lock()
         self.chunk_progress = [0.0] * self.num_chunk
         self.done_chunk = [False] * self.num_chunk
-        self.port = [61862, 61863, 61864, 61865]
         self.file_size = 0 
         self.file_name = 0
-        self.output_file = "UDP\\receive-file\\"
+        self.output_file = input("Enter folder path: ")
         self.chunks = []
-        self.MAX_TRIES = 1000
+        self.MAX_TRIES = 100
         self.chunk_size = 0
         self.need_file = Queue()
         self.list_file = ""
 
-        Thread(target = self.read_input_file).start()
+        Thread(target = self.read_input_file, daemon=True).start()
 
     def stop(self):
-        print("\nShutting down Client...")
+        print("\n\033[1;32;40m[NOTIFICATION] Disconnected!\n\033[0m")
         os._exit(0)
 
     def read_input_file(self):
@@ -64,13 +65,16 @@ class FileClient:
 
     def display_progress(self):
         try:
+            print("Start downloading ", self.file_name, "!")
             while any(done == False for done in self.done_chunk):
                 progress_msg = "\n".join([f"Downloading {self.file_name} part {chunk_id + 1}: {self.chunk_progress[chunk_id]:.2f}%" for chunk_id in range(self.num_chunk)])
-                print("\033[1;31;40m" + progress_msg + "\033[0m")
+                print("\033[1;37;40m" + progress_msg + "\033[0m")
                 sys.stdout.flush()
                 # move cursor up
-                time.sleep(0.1)
                 sys.stdout.write(f"\033[{self.num_chunk}A\033[0G\033[J")
+
+            progress_msg = "\n".join([f"Downloading {self.file_name} part {chunk_id + 1} successfully" for chunk_id in range(self.num_chunk)])
+            print("\033[1;37;40m" + progress_msg + "\033[0m")        
         except Exception as e:
             print("ERROR display progress: ", {e})
 
@@ -79,16 +83,6 @@ class FileClient:
             return self.need_file.get()
         else: 
             return None
-
-    def rcv_progress(self, client_socket):
-        while True:
-            progress_msg = self.recv_message(client_socket)  
-            print("\033[1;31;40m" + progress_msg + "\033[0m")
-
-            if "successfully" in progress_msg: break
-
-            # move cursor up
-            sys.stdout.write("\033[4A\033[0G\033[J")
             
     def calculate_checksum(self, data):
         return hashlib.sha256(data).hexdigest()
@@ -176,7 +170,7 @@ class FileClient:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
     def merge_chunks(self):
-        self.file_name = self.output_file + self.file_name
+        self.file_name = self.output_file + '\\' + self.file_name
         with open(self.file_name, "wb") as f:
             for chunk in self.chunks_data:
                 if chunk is not None:
@@ -204,8 +198,11 @@ class FileClient:
                         try:
                             # gửi file cần tải
                             self.file_name = self.get_file_name()
-                            if self.file_name != None:
-                                self.send_message(client_socket, self.file_name)
+                            if self.file_name is not None:
+                                msg = f"GET {self.file_name}"
+                                ok = self.send_message(client_socket, msg)
+                                if not ok:
+                                    return
                                 # Nhận file_size hay NOT
                                 response = self.recv_message(client_socket)
                                 if response != "NOT":
@@ -231,10 +228,11 @@ class FileClient:
                                     self.chunk_progress = [0.0] * self.num_chunk
                                     self.done_chunk = [False] * self.num_chunk
                                 else:
-                                    print(self.file_name, "does not exist in file list server!!\n")
+                                    msg = f"File {self.file_name} is not exist!"
+                                    print(msg)
                         except KeyboardInterrupt:
-                            FIN = "EXIT"
-                            self.send_message(client_socket, FIN)
+                            # FIN = "EXIT"
+                            # self.send_message(client_socket, FIN)
                             break
                         except ConnectionResetError:
                             print(f"Server disconnected.")
@@ -245,7 +243,6 @@ class FileClient:
             print(f"Server {server_address} is not alive.")
         
     def send_ping_message(self, client_socket : socket, message):
-        cnt = 1
         while True:
             try:
                 client_socket.sendto(message.encode(), server_address)
@@ -253,10 +250,7 @@ class FileClient:
                 if ack.decode() == "OK":
                     return True
             except socket.timeout:
-                cnt = cnt + 1
-                if cnt >= self.MAX_TRIES:
-                    print("Can not send PING_MSG to server\n")
-                    break
+                continue
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
                 return False
@@ -264,7 +258,6 @@ class FileClient:
                 return False
 
     def send_message(self, client_socket : socket, message):
-        cnt = 1
         message = message.encode()
         checksum = self.calculate_checksum(message).encode()
         packet = b"|".join([checksum, message]) 
@@ -275,10 +268,7 @@ class FileClient:
                 if ack.decode() == "OK":
                     return True
             except socket.timeout:
-                cnt = cnt + 1
-                if cnt >= self.MAX_TRIES:
-                    print("Can't send message to server\n")
-                    break
+                continue
             except ConnectionResetError:
                 print(f"Server {server_address} is not alive.")
                 return False
