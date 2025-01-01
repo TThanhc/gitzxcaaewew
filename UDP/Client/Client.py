@@ -94,11 +94,11 @@ class FileClient:
                 PING_MSG = "23120088"
                 self.send_ping_message(client_sock, PING_MSG)
                 # chunksize
-                start = chunk_id * (self.file_size // int(self.num_chunk)) 
+                start = chunk_id * self.chunk_size
                 if chunk_id == self.num_chunk - 1:   # Chunk cuối có thể chứa phần dư
                     end = self.file_size
                 else:
-                    end = start + (self.file_size // int(self.num_chunk))  
+                    end = start + self.chunk_size 
                 # receive chunk
                 ack = 0
                 total_chunk = end - start
@@ -117,11 +117,11 @@ class FileClient:
                             if fl:
                                 if chunk_id != id:
                                     chunk_id = id
-                                    start = chunk_id * (self.file_size // int(self.num_chunk))
+                                    start = chunk_id * self.chunk_size
                                     if chunk_id == self.num_chunk - 1:
                                         end = self.file_size
                                     else:
-                                        end = start + (self.file_size // int(self.num_chunk))  
+                                        end = start + self.chunk_size  
                                     total_chunk = end - start
                                 fl = False
                             # response msg
@@ -190,7 +190,7 @@ class FileClient:
                                 response = self.recv_message(client_socket)
                                 if response != "NOT":
                                     self.file_size = int(response)
-                                    self.chunk_size = self.file_size // self.num_chunk                                
+                                    self.chunk_size = self.file_size // int(self.num_chunk)                               
                                     # threading
                                     threads = []
                                     
