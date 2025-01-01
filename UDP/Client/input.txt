@@ -1,1 +1,12 @@
-100MB.bin
+sáas
+sff
+sdf
+10MB.zip
+input.txt
+input_2.txt
+10MB.zip
+input.txt
+input_2.txt
+10MB.zip
+input.txt
+input_2.txt

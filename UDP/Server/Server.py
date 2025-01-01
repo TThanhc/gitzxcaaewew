@@ -27,7 +27,7 @@ class FileServer:
         ]
         self.dic_ack = {}
         self.dict_ping = {}
-        # khởi tạo server socket
+        # initialize server socket
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
             self.server_socket.bind((self.host, self.port))
@@ -36,10 +36,12 @@ class FileServer:
             print(f"Error: {e}")
 
     def check_exist_file(self, file_name):
+        if '.' not in file_name:
+            return False
         for f in self.file_list:
             if file_name in f:
                 return True
-        return False
+        return False 
 
     def send_file_list(self, client_address):
         file_list_str = "List of files:\n" + "\n".join(self.file_list)
@@ -49,23 +51,24 @@ class FileServer:
         return hashlib.sha256(data).hexdigest()
     
     def packaging(self, data, sequence_number, chunk_id):
-        # Tính checksum
+        # cacualte checksum
         checksum = self.calculate_checksum(data).encode()
         chunk_id = chunk_id.encode()
         seq_s = str(sequence_number).encode()
-        # Thêm các trường thông tin vào message --> packet
+        # packaging message --> packet
         packet = b"|".join([seq_s, checksum, chunk_id, data])
         return packet
 
     def send_chunk(self, file_name, file_size, chunk_id):
-        # Nhận tin nhắn khởi tạo kết nối
+        # receive PING_MSG
         client_address = self.recv_ping_message()
-        if client_address is not None:
-            print(f"{chunk_id}Received PING_MSG from client ", client_address, "\n")
-        # gửi bytes
+        if client_address is None:
+            # print(f"\n\033[1;32;40m[NOTIFICATION] Server has received PING_MSG from client with address: {str(client_address)}\n\033[0m")
+            return
+        # send bytes
         sequence_number = 0
         try:
-            # Đọc dữ liệu chunk từ file
+            # read chunk file
             start = chunk_id * (file_size // int(self.chunk_num)) # Bắt đầu chunk
             end = start + (file_size // int(self.chunk_num))      # Kết thúc chunk
             if chunk_id == self.chunk_num - 1:   # Chunk cuối có thể chứa phần dư
@@ -78,26 +81,25 @@ class FileServer:
                     
                     if not data:
                         break
-                    # biến đếm số lần gửi lại (tối đa 1000 lần)
-                    cnt = 1
+                    # cnt = 1
                     while True:
-                        # đóng gói thành gói tin
+                        # packaging
                         packet = self.packaging(data, sequence_number, str(chunk_id))
                         if packet == None or client_address == None:
                             return
-                        # chờ nhận ack
                         try:
-                            # gửi đi
+                            # send packet
                             self.server_socket.sendto(packet, client_address)
+                            # wait for ack
                             ack, address = self.server_socket.recvfrom(PACKET_SIZE)
                             ack = ack.decode()
                             if ack.isdigit():
                                 ack = int(ack)
-                                # Nhận đúng gói ack
+                                # receive suitable ack
                                 if address == client_address and ack == sequence_number:
                                     sequence_number += 1
                                     break
-                                # Nhận ack không phải của mình lưu lại
+                                # not receive suitable ack store into dict_ack
                                 self.dic_ack[address] = ack
         
                                 if client_address in self.dic_ack:
@@ -106,22 +108,20 @@ class FileServer:
                                         sequence_number += 1
                                         break      
                         except socket.timeout:
-                            cnt = cnt + 1
-                            if cnt >= self.MAX_TRIES:
-                                break
+                            # cnt = cnt + 1
+                            # if cnt >= self.MAX_TRIES:
+                            #     break
+                            continue
                         except ConnectionResetError:
-                            if start + len(data) >= end:
-                                return
+                            return
                         except KeyboardInterrupt:
                             return
-                    start += len(data)            
-        except ConnectionResetError:
-            return
+                    start += len(data)
         except KeyboardInterrupt:
             return
 
     def start_server(self):
-        # Chờ PING_MSG từ client 
+        # receive PING_MSG from client
         print("Server ", self.server_socket.getsockname(), "is waiting for PING_MSG\n")
         try:
             client_address = self.recv_ping_message()
@@ -131,26 +131,32 @@ class FileServer:
             return
         
         if client_address is not None:
-            # gửi danh sách file
+            # send file_list
             self.send_file_list(client_address)
             print("Files list has been sent to client\n")
-            # Nhận tên file
+            # receive file need to be downloaded
             while True:
                 try:
                     client_msg, address = self.recv_message()
+                    # receive msg
                     if "GET" in client_msg:
                         file_name = client_msg[4:]
+                    # client disconnect
                     if client_msg == "EXIT":
+                        print(f"\n\033[1;32;40m[NOTIFICATION] Client {str(address)} disconnected.\n\033[0m")
                         break
+                    # print msg
                     print("\033[1;31;40m" + "[FROM] " + str(address) + ": " + client_msg + "\033[0m")
+                
                     if self.check_exist_file(file_name):
+                        filename = file_name
                         file_name = self.file_path + file_name
                         file_size = os.path.getsize(file_name)
-                        # Gửi files_size cho client
+                        # send files_size to client
                         self.send_message(str(file_size), client_address)
 
-                        # Gửi file
-                        print("Start downloading ", file_name, "!")
+                        # send file
+                        print("Start downloading ", filename, "!")
                         try:
                             threads = []
                             for chunk_id in range(self.chunk_num):
@@ -166,20 +172,19 @@ class FileServer:
                                     thread.join()
 
                             # Gửi xong file
-                            message = f"Download {file_name} successfully"
+                            message = f"Download {filename} successfully"
                             print(message)
                         except KeyboardInterrupt:
                             return
                     else:
                         msg = f"File {file_name} is not exist!"
-                        print(msg)
+                        print(f"[TO] {str(address)}: {msg}")
                         message = "NOT"
                         self.send_message(message, client_address)
                 except KeyboardInterrupt:
                     return
                 except ConnectionResetError:
-                    print("Client has been disconnected")
-                    return
+                    continue
         else:
             print("Client address is none\n")
               
@@ -192,14 +197,16 @@ class FileServer:
                     continue
                 self.client.append(client_address)
                 message = message.decode()
-                response = "OK"
-                self.server_socket.sendto(response.encode(), client_address)
-                return client_address
+                if message == "23120088":
+                    response = "OK"
+                    self.server_socket.sendto(response.encode(), client_address)
+                    return client_address
+                else:
+                    response = "NOK"
+                    self.server_socket.sendto(response.encode(), client_address)
             except socket.timeout:
-                # cnt = cnt + 1
-                # if cnt >= self.MAX_TRIES:
-                #     print("Can not receive PING_MSG from client\n")
-                #     return None
+                continue
+            except ConnectionResetError:
                 continue
             except KeyboardInterrupt:
                 return None

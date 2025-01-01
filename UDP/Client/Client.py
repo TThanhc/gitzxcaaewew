@@ -8,7 +8,6 @@ import sys
 import os
 
 PACKET_SIZE = 1024 + 1024
-# Cấu hình UDP socket
 HOST = input("Enter server's IP: ")
 PORT = input("Enter server's PORT: ")
 server_address = (HOST, int(PORT))
@@ -24,7 +23,8 @@ class FileClient:
         self.done_chunk = [False] * self.num_chunk
         self.file_size = 0 
         self.file_name = 0
-        self.output_file = input("Enter folder path: ")
+        self.file_input = input("Enter input_file's path: ")
+        self.output_path = input("Enter folder path to save your file: ")
         self.chunks = []
         self.MAX_TRIES = 100
         self.chunk_size = 0
@@ -38,13 +38,12 @@ class FileClient:
         os._exit(0)
 
     def read_input_file(self):
-        file_input = "UDP\Client\input.txt"
         start = 0
 
         try:
             while True:
                 try:
-                    with open(file_input, "r") as f:
+                    with open(self.file_input, "r") as f:
                         f.seek(start)
                         new_files = [line.strip() for line in f.readlines()]
                         start = f.tell()
@@ -57,15 +56,13 @@ class FileClient:
                     time.sleep(5)
                 except KeyboardInterrupt:
                     return
-                except ConnectionResetError:
-                    print(f"Server {server_address} is not alive.")
-                    break
         except Exception as e:
             print(f"Error in send_request: {e}")
 
     def display_progress(self):
         try:
-            print("Start downloading ", self.file_name, "!")
+            msg = f"Server: Start downloading {self.file_name} !"
+            print("\033[1;31;40m" + msg + "\033[0m")
             while any(done == False for done in self.done_chunk):
                 progress_msg = "\n".join([f"Downloading {self.file_name} part {chunk_id + 1}: {self.chunk_progress[chunk_id]:.2f}%" for chunk_id in range(self.num_chunk)])
                 print("\033[1;37;40m" + progress_msg + "\033[0m")
@@ -74,7 +71,9 @@ class FileClient:
                 sys.stdout.write(f"\033[{self.num_chunk}A\033[0G\033[J")
 
             progress_msg = "\n".join([f"Downloading {self.file_name} part {chunk_id + 1} successfully" for chunk_id in range(self.num_chunk)])
-            print("\033[1;37;40m" + progress_msg + "\033[0m")        
+            print("\033[1;37;40m" + progress_msg + "\033[0m") 
+            msg = f"Server: Downloading {self.file_name} successfully" 
+            print("\033[1;31;40m" + msg + "\033[0m")      
         except Exception as e:
             print("ERROR display progress: ", {e})
 
@@ -91,28 +90,24 @@ class FileClient:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_sock:
                 client_sock.settimeout(self.TIMEOUT)
-                # tin nhắn khởi tạo socket
-                PING_MSG = str(chunk_id)
-                ok = self.send_ping_message(client_sock, PING_MSG)
-                if not ok:
-                    return
-                start = chunk_id * (self.file_size // int(self.num_chunk)) # Bắt đầu chunk    
-                # Kết thúc chunk
+                # send PING_MSG
+                PING_MSG = "23120088"
+                self.send_ping_message(client_sock, PING_MSG)
+                # chunksize
+                start = chunk_id * (self.file_size // int(self.num_chunk)) 
                 if chunk_id == self.num_chunk - 1:   # Chunk cuối có thể chứa phần dư
                     end = self.file_size
                 else:
                     end = start + (self.file_size // int(self.num_chunk))  
-                # tải chunk
+                # receive chunk
                 ack = 0
                 total_chunk = end - start
                 received_bytes = 0
                 chunk_data = b""
-                # biến đếm số lần gửi lại (tối đa 1000 lần)
                 fl = True
-                cnt = 1
                 while True:
                     try:
-                        # nhận gói tin
+                        # receive packet
                         packet, _ = client_sock.recvfrom(PACKET_SIZE)
                         if packet.count(b"|") >= 3:
                             seq_s, checksum, id, data = packet.split(b"|", maxsplit=3)
@@ -122,46 +117,37 @@ class FileClient:
                             if fl:
                                 if chunk_id != id:
                                     chunk_id = id
-                                    start = chunk_id * (self.file_size // int(self.num_chunk)) # Bắt đầu chunk    
-                                    # Kết thúc chunk
-                                    if chunk_id == self.num_chunk - 1:   # Chunk cuối có thể chứa phần dư
+                                    start = chunk_id * (self.file_size // int(self.num_chunk))
+                                    if chunk_id == self.num_chunk - 1:
                                         end = self.file_size
                                     else:
                                         end = start + (self.file_size // int(self.num_chunk))  
                                     total_chunk = end - start
                                 fl = False
-                            # tin nhắn phản hồi
+                            # response msg
                             if self.calculate_checksum(data) == checksum:
                                 if int(seq_s) == ack:
-                                    # số bytes đã nhận
                                     received_bytes += len(data)
                                     # update progress
                                     with self.lock:
                                         self.chunk_progress[chunk_id] = (received_bytes / total_chunk) * 100
-                                    # gửi ack lại
+                                    # send ack back
                                     response = f"{seq_s}"
                                     client_sock.sendto(response.encode(), server_address)
-                                    # thêm các byte vào mảng lưu
+                                    # store bytes
                                     chunk_data += data
-                                    # Dừng khi nhận đủ chunk
+                                    # stop when receive full chunk
                                     if received_bytes >= total_chunk:
                                         break
                                     ack += 1
                                     continue
-                        # gửi lại ack trc đó
+                        # send last ack received
                         response = f"{ack - 1}"
                         client_sock.sendto(response.encode(), server_address)
                     except KeyboardInterrupt:
                         break
                     except socket.timeout:
-                        cnt = cnt + 1
-                        if cnt >= self.MAX_TRIES:
-                            print("Error receive data\n")
-                            break
-                    except ConnectionResetError:
-                        print(f"Server disconnected.")
-                        client_sock.close()
-                        return
+                        continue
                 self.done_chunk[chunk_id] = True
                 self.chunks_data[chunk_id] = chunk_data
         except KeyboardInterrupt:
@@ -170,7 +156,7 @@ class FileClient:
             print(f"Error downloading chunk {chunk_id}: {e}")
 
     def merge_chunks(self):
-        self.file_name = self.output_file + '\\' + self.file_name
+        self.file_name = self.output_path + '\\' + self.file_name
         with open(self.file_name, "wb") as f:
             for chunk in self.chunks_data:
                 if chunk is not None:
@@ -181,34 +167,31 @@ class FileClient:
         print(f"\nFile saved to {self.file_name}")
 
     def start_client(self):
-        # tin nhắn khởi tạo
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
                 client_socket.settimeout(self.TIMEOUT)
-                # tin nhắn khởi tạo socket
+                # PING_MSG
                 try:
-                    fl = self.send_ping_message(client_socket, "23120088")
-                    if not fl:
-                        return
+                    self.send_ping_message(client_socket, "23120088")
                     # nhận danh sách file
                     self.list_file = self.recv_message(client_socket)
                     if self.list_file is not None:
-                        print(self.list_file)
+                        print("\033[1;31;40m" + "Server: " + self.list_file + "\n\033[0m")
+                    
                     while True:
                         try:
-                            # gửi file cần tải
+                            # send file_name
                             self.file_name = self.get_file_name()
                             if self.file_name is not None:
                                 msg = f"GET {self.file_name}"
-                                ok = self.send_message(client_socket, msg)
-                                if not ok:
-                                    return
-                                # Nhận file_size hay NOT
+                                print(f"Client: {msg}")
+                                self.send_message(client_socket, msg)
+                                # receive response (exist: file_size, not exist: NOT)
                                 response = self.recv_message(client_socket)
                                 if response != "NOT":
                                     self.file_size = int(response)
                                     self.chunk_size = self.file_size // self.num_chunk                                
-                                    # chạy client
+                                    # threading
                                     threads = []
                                     
                                     for chunk_id in range(self.num_chunk):
@@ -220,16 +203,15 @@ class FileClient:
                                     self.display_progress()
 
                                     for thread in threads:
-                                        if thread is not None:
-                                            thread.join()
+                                        thread.join()
                                             
                                     self.merge_chunks()
                                     self.chunks_data = [None] * self.num_chunk
                                     self.chunk_progress = [0.0] * self.num_chunk
                                     self.done_chunk = [False] * self.num_chunk
                                 else:
-                                    msg = f"File {self.file_name} is not exist!"
-                                    print(msg)
+                                    server_msg = f"File {self.file_name} is not exist!"
+                                    print("\033[1;31;40m" + "Server: " + server_msg + "\033[0m")
                         except KeyboardInterrupt:
                             # FIN = "EXIT"
                             # self.send_message(client_socket, FIN)
@@ -248,14 +230,11 @@ class FileClient:
                 client_socket.sendto(message.encode(), server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    return True
+                    return
             except socket.timeout:
                 continue
-            except ConnectionResetError:
-                print(f"Server {server_address} is not alive.")
-                return False
             except KeyboardInterrupt:
-                return False
+                return
 
     def send_message(self, client_socket : socket, message):
         message = message.encode()
@@ -266,14 +245,11 @@ class FileClient:
                 client_socket.sendto(packet, server_address)
                 ack, _ = client_socket.recvfrom(PACKET_SIZE)
                 if ack.decode() == "OK":
-                    return True
+                    return
             except socket.timeout:
                 continue
-            except ConnectionResetError:
-                print(f"Server {server_address} is not alive.")
-                return False
             except KeyboardInterrupt:
-                return False
+                return
     
     def recv_message(self, client_socket : socket):
         cnt = 1
@@ -289,13 +265,7 @@ class FileClient:
                 response = "NOK"
                 client_socket.sendto(response.encode(), server_address)
             except socket.timeout:
-                cnt = cnt + 1
-                if cnt >= self.MAX_TRIES:
-                    print("Can not receive message from server\n")
-                    break
-            except ConnectionResetError:
-                print(f"Server {server_address} is not alive.")
-                return None
+                continue
             except KeyboardInterrupt:
                 return None
 
